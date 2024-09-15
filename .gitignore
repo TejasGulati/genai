@@ -1,0 +1,103 @@
+# Python bytecode
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Django
+*.log
+*.pot
+*.py[cod]
+__pycache__/
+db.sqlite3
+staticfiles/
+media/
+*.pid
+*.sqlite3
+
+# Environment variables
+.env
+.env.*
+.venv/
+venv/
+venv.bak/
+venv.*
+
+# Pyenv
+.python-version
+
+# virtualenv
+.virtualenv/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# CSV files (if you want to exclude all CSV files)
+*.csv
+
+# Model files
+*.h5
+*.pkl
+*.pickle
+*.joblib
+*.parquet
+*.arrow
+
+# Training logs
+training_logs/
+*.log
+
+# Coverage reports
+.coverage
+.coverage.*
+*.cover
+
+# Testing
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+*.tmp
+*.swp
+
+# Django migrations
+*/migrations/*
+!*/migrations/__init__.py
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDEs and editors
+.idea/
+*.suo
+*.ntvs_analysis.dat
+*.nib
+*.suo
+*.suo
+
+# PyCharm
+.idea/
+
+# Cython debug symbols
+cython_debug/
+
+# Other
+*.tmp
+*.bak
+*.swp
+
+# Venv and specific packages
+venv/
