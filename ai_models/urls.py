@@ -6,9 +6,9 @@ from .views import (
     EnvironmentalImpactView,
     ESGScoreView,
     InnovativeBusinessModelView,
-    CombinedAnalysisView,
     SustainabilityReportView,
     GeospatialAnalysisView,
+    TimeSeriesForecastView,
     AIInsightsView
 )
 
@@ -19,9 +19,8 @@ urlpatterns = [
     path('environmental-impact/', EnvironmentalImpactView.as_view(), name='environmental_impact'),
     path('esg-score/', ESGScoreView.as_view(), name='esg_score'),
     path('business-model/', InnovativeBusinessModelView.as_view(), name='business_model'),
-    path('combined-analysis/', CombinedAnalysisView.as_view(), name='combined_analysis'),
     path('sustainability-report/', SustainabilityReportView.as_view(), name='sustainability_report'),
     path('geospatial-analysis/', GeospatialAnalysisView.as_view(), name='geospatial_analysis'),
+    path('time-series-forecast/', TimeSeriesForecastView.as_view(), name='time_series_forecast'),
     path('ai-insights/', AIInsightsView.as_view(), name='ai_insights'),
 ]
-

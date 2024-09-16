@@ -6,7 +6,7 @@ from django.utils.decorators import method_decorator
 import logging
 import json
 import google.generativeai as genai
-from .ml_model import EnhancedSustainabilityModel
+from .ml_model import EnhancedSustainabilityModel, TextGenerator, ImageGenerator, PredictiveAnalytics, EnvironmentalImpactAnalyzer, ESGScoreCalculator, InnovativeBusinessModelGenerator
 from .serializers import (
     TextGenerationSerializer, 
     ImageGenerationSerializer, 
@@ -14,7 +14,6 @@ from .serializers import (
     EnvironmentalImpactSerializer,
     ESGScoreSerializer,
     BusinessModelSerializer,
-    CombinedAnalysisSerializer,
     SustainabilityReportSerializer,
     GeospatialAnalysisSerializer
 )
@@ -29,6 +28,14 @@ sustainability_model.load_data()
 sustainability_model.preprocess_data()
 sustainability_model.engineer_features()
 sustainability_model.train_models()
+sustainability_model.train_time_series_model()
+
+text_generator = TextGenerator(sustainability_model)
+image_generator = ImageGenerator(sustainability_model)
+predictive_analytics = PredictiveAnalytics(sustainability_model)
+environmental_impact_analyzer = EnvironmentalImpactAnalyzer(sustainability_model)
+esg_score_calculator = ESGScoreCalculator(sustainability_model)
+business_model_generator = InnovativeBusinessModelGenerator(sustainability_model)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class TextGenerationView(views.APIView):
@@ -36,7 +43,7 @@ class TextGenerationView(views.APIView):
         serializer = TextGenerationSerializer(data=request.data)
         if serializer.is_valid():
             try:
-                generated_text = sustainability_model.generate_text(
+                generated_text = text_generator.generate(
                     serializer.validated_data['prompt'],
                     serializer.validated_data.get('csv_file'),
                     use_gpt2=serializer.validated_data.get('use_gpt2', False)
@@ -53,7 +60,7 @@ class ImageGenerationView(views.APIView):
         serializer = ImageGenerationSerializer(data=request.data)
         if serializer.is_valid():
             try:
-                image_url = sustainability_model.generate_image(serializer.validated_data['prompt'])
+                image_url = image_generator.generate(serializer.validated_data['prompt'])
                 return Response({'image_url': image_url}, status=status.HTTP_200_OK)
             except Exception as e:
                 logger.error(f"Error in image generation: {str(e)}")
@@ -66,7 +73,10 @@ class PredictiveAnalyticsView(views.APIView):
         serializer = PredictiveAnalyticsSerializer(data=request.data)
         if serializer.is_valid():
             try:
-                predictions = sustainability_model.make_predictions(serializer.validated_data['data'])
+                predictions = predictive_analytics.predict(
+                    serializer.validated_data['data'],
+                    serializer.validated_data['dataset_key']
+                )
                 return Response(predictions, status=status.HTTP_200_OK)
             except Exception as e:
                 logger.error(f"Error in predictive analytics: {str(e)}")
@@ -79,11 +89,11 @@ class EnvironmentalImpactView(views.APIView):
         serializer = EnvironmentalImpactSerializer(data=request.data)
         if serializer.is_valid():
             try:
-                impact_analysis = sustainability_model.analyze_environmental_impact(
+                impact_analysis = environmental_impact_analyzer.analyze(
                     serializer.validated_data['country'],
                     serializer.validated_data['year']
                 )
-                return Response({'impact_analysis': impact_analysis}, status=status.HTTP_200_OK)
+                return Response(impact_analysis, status=status.HTTP_200_OK)
             except Exception as e:
                 logger.error(f"Error in environmental impact analysis: {str(e)}")
                 return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -95,8 +105,8 @@ class ESGScoreView(views.APIView):
         serializer = ESGScoreSerializer(data=request.data)
         if serializer.is_valid():
             try:
-                esg_score = sustainability_model.calculate_esg_score(serializer.validated_data['company_data'])
-                return Response({'esg_score': esg_score}, status=status.HTTP_200_OK)
+                esg_score = esg_score_calculator.calculate_esg_score(serializer.validated_data['company_data'])
+                return Response(esg_score, status=status.HTTP_200_OK)
             except Exception as e:
                 logger.error(f"Error in ESG score calculation: {str(e)}")
                 return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -108,28 +118,10 @@ class InnovativeBusinessModelView(views.APIView):
         serializer = BusinessModelSerializer(data=request.data)
         if serializer.is_valid():
             try:
-                business_model = sustainability_model.generate_business_model(serializer.validated_data)
-                return Response({'business_model': business_model}, status=status.HTTP_200_OK)
+                business_model = business_model_generator.generate_business_model(serializer.validated_data)
+                return Response(business_model, status=status.HTTP_200_OK)
             except Exception as e:
                 logger.error(f"Error in business model generation: {str(e)}")
-                return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@method_decorator(csrf_exempt, name='dispatch')
-class CombinedAnalysisView(views.APIView):
-    def post(self, request):
-        serializer = CombinedAnalysisSerializer(data=request.data)
-        if serializer.is_valid():
-            try:
-                results = sustainability_model.run_comprehensive_analysis(
-                    serializer.validated_data['company_name'],
-                    serializer.validated_data['industry'],
-                    serializer.validated_data['country'],
-                    serializer.validated_data['year']
-                )
-                return Response(results, status=status.HTTP_200_OK)
-            except Exception as e:
-                logger.error(f"Error in combined analysis: {str(e)}")
                 return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -158,6 +150,17 @@ class GeospatialAnalysisView(views.APIView):
                 logger.error(f"Error in geospatial analysis: {str(e)}")
                 return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@method_decorator(csrf_exempt, name='dispatch')
+class TimeSeriesForecastView(views.APIView):
+    def post(self, request):
+        try:
+            periods = request.data.get('periods', 365)
+            forecast = sustainability_model.make_time_series_forecast(periods)
+            return Response(forecast, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error in time series forecast: {str(e)}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class AIInsightsView(views.APIView):
