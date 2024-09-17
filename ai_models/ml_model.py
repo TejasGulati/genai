@@ -2,8 +2,12 @@ import os
 import logging
 from datetime import datetime
 import random
-from typing import Dict, List, Any
+import time
+import concurrent.futures
+from prophet.diagnostics import cross_validation, performance_metrics
+from typing import Counter, Dict, List, Any
 import numpy as np
+from diffusers import StableDiffusionPipeline
 import pandas as pd
 import geopandas as gpd
 from sklearn.preprocessing import OneHotEncoder, StandardScaler, LabelEncoder
@@ -11,9 +15,9 @@ from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_selection import SelectKBest, f_classif, f_regression
 from sklearn.decomposition import PCA
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import accuracy_score, mean_squared_error, r2_score
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, train_test_split, cross_val_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, mean_squared_error, r2_score
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, VotingClassifier, VotingRegressor
 from sklearn.linear_model import LassoCV, LogisticRegression, RidgeCV
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.pipeline import Pipeline
@@ -27,6 +31,8 @@ import stability_sdk.interfaces.gooseai.generation.generation_pb2 as generation
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, AutoTokenizer, AutoModel
 import torch
 import warnings
+
+from xgboost import XGBClassifier, XGBRegressor
 warnings.filterwarnings('ignore')
 from dotenv import load_dotenv
 load_dotenv()
@@ -44,6 +50,8 @@ class EnhancedSustainabilityModel:
         self.target_variables = {}
         self.cache_dir = 'data_cache'
         self.prophet_model = None
+        self.cv_scores = {}
+        self.time_series_forecasts = None
         
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
         self.logger = logging.getLogger(__name__)
@@ -81,9 +89,37 @@ class EnhancedSustainabilityModel:
                     if key == 'world_bank':
                         df = pd.read_csv(file_path)
                         self.logger.info(f"World Bank data initial shape: {df.shape}")
+                    
+                        # Define relevant indicators
+                        relevant_indicators = [
+                            'Urban population (% of total population)',
+                            'Urban population growth (annual %)',
+                            'Population growth (annual %)',
+                            'CO2 emissions (metric tons per capita)',
+                            'CO2 emissions from liquid fuel consumption (% of total)',
+                            'CO2 emissions from liquid fuel consumption (kt)',
+                            'Renewable energy consumption (% of total final energy consumption)',
+                            'Renewable electricity output (% of total electricity output)',
+                            'Access to electricity (% of population)',
+                            'Foreign direct investment, net inflows (% of GDP)',
+                            'Forest area (% of land area)',
+                            'Land area where elevation is below 5 meters (% of total land area)',
+                            'Urban land area where elevation is below 5 meters (% of total land area)',
+                            'Agricultural land (% of land area)',
+                            'Internet users (per 100 people)',
+                            'Research and development expenditure (% of GDP)'
+                        ]
+                        
+                        # Filter for relevant indicators
+                        df = df[df['Indicator Name'].isin(relevant_indicators)]
                         
                         # Identify year columns
                         year_columns = [col for col in df.columns if col.isdigit()]
+                        
+                        # Filter for entries with at least 63 data points
+                        df['data_points'] = df[year_columns].notna().sum(axis=1)
+                        df = df[df['data_points'] >= 64]
+                        df = df.drop('data_points', axis=1)
                         
                         # Melt the DataFrame to convert years to a single column
                         id_vars = ['Country Name', 'Country Code', 'Indicator Name', 'Indicator Code']
@@ -93,10 +129,6 @@ class EnhancedSustainabilityModel:
                         df['year'] = pd.to_numeric(df['year'], errors='coerce')
                         df['value'] = pd.to_numeric(df['value'], errors='coerce')
                         df = df.dropna(subset=['year', 'value'])
-                        
-                        # Sample approximately 20,000 rows
-                        if len(df) > 20000:
-                            df = df.sample(n=20000, random_state=42)
                         
                         self.data[key] = df
                     elif key == 'companies':
@@ -246,7 +278,17 @@ class EnhancedSustainabilityModel:
     def train_models(self):
         for key in self.data:
             if self.data[key] is None or self.data[key].empty or self.target_variables[key] is None:
+                self.logger.warning(f"Skipping {key} dataset due to missing data or target variable")
                 continue
+
+            model_filename = f"{key}_model.joblib"
+            if os.path.exists(model_filename):
+                self.logger.info(f"Loading existing model for {key} dataset")
+                self.models[key] = self.load_model(key)
+                continue
+
+            self.logger.info(f"Starting model training for {key} dataset")
+            self.logger.info(f"Shape of {key} dataset: {self.data[key].shape}")
 
             y = self.data[key][self.target_variables[key]]
             mask = ~y.isna()
@@ -254,7 +296,12 @@ class EnhancedSustainabilityModel:
             y = y[mask]
 
             if len(y) == 0:
+                self.logger.warning(f"No valid target values for {key} dataset. Skipping.")
                 continue
+
+            # Use a smaller subset of data for faster training
+            if len(X) > 10000:
+                X, _, y, _ = train_test_split(X, y, train_size=10000, random_state=42)
 
             X = self.preprocessors[key].fit_transform(X)
             is_classification = y.dtype == 'object' or len(np.unique(y)) < 10
@@ -263,56 +310,124 @@ class EnhancedSustainabilityModel:
                 le = LabelEncoder()
                 y = le.fit_transform(y)
 
-            selector = SelectKBest(f_classif if is_classification else f_regression, k=min(50, X.shape[1]))
-            X_selected = selector.fit_transform(X, y)
-            
-            pca = PCA(n_components=min(30, X_selected.shape[1]))
-            X_reduced = pca.fit_transform(X_selected)
-
-            X_train, X_test, y_train, y_test = train_test_split(X_reduced, y, test_size=0.2, random_state=42)
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
             if is_classification:
                 models = {
-                    'RandomForest': RandomForestClassifier(n_estimators=100, random_state=42),
-                    'LightGBM': lgb.LGBMClassifier(random_state=42, verbose=-1),
-                    'LogisticRegression': OneVsRestClassifier(LogisticRegression(random_state=42))
+                    'RandomForest': RandomForestClassifier(random_state=42, class_weight='balanced'),
+                    'LightGBM': lgb.LGBMClassifier(random_state=42, class_weight='balanced', verbosity=-1),
+                    'XGBoost': XGBClassifier(random_state=42, scale_pos_weight=1),
+                    'LogisticRegression': LogisticRegression(random_state=42, class_weight='balanced')
                 }
-                scoring = 'accuracy'
+                param_grids = {
+                    'RandomForest': {
+                        'n_estimators': [100, 200],
+                        'max_depth': [None, 20],
+                        'min_samples_leaf': [1, 2, 4]
+                    },
+                    'LightGBM': {
+                        'n_estimators': [100, 200],
+                        'max_depth': [-1, 20],
+                        'num_leaves': [31, 50],
+                        'reg_alpha': [0, 0.1, 0.5],
+                        'reg_lambda': [0, 0.1, 0.5]
+                    },
+                    'XGBoost': {
+                        'n_estimators': [100, 200],
+                        'max_depth': [3, 6],
+                        'learning_rate': [0.01, 0.1],
+                        'reg_alpha': [0, 0.1, 0.5],
+                        'reg_lambda': [0, 0.1, 0.5]
+                    },
+                    'LogisticRegression': {
+                        'C': [0.1, 1, 10],
+                        'penalty': ['l1', 'l2'],
+                        'solver': ['liblinear', 'saga']
+                    }
+                }
+                scoring = 'balanced_accuracy'
             else:
                 models = {
-                    'RandomForest': RandomForestRegressor(n_estimators=100, random_state=42),
-                    'LightGBM': lgb.LGBMRegressor(random_state=42, verbose=-1),
+                    'RandomForest': RandomForestRegressor(random_state=42),
+                    'LightGBM': lgb.LGBMRegressor(random_state=42, verbosity=-1),
+                    'XGBoost': XGBRegressor(random_state=42),
                     'Lasso': LassoCV(random_state=42),
                     'Ridge': RidgeCV()
                 }
-                scoring = 'r2'
+                param_grids = {
+                    'RandomForest': {
+                        'n_estimators': [100, 200],
+                        'max_depth': [None, 20],
+                        'min_samples_leaf': [1, 2, 4]
+                    },
+                    'LightGBM': {
+                        'n_estimators': [100, 200],
+                        'max_depth': [-1, 20],
+                        'num_leaves': [31, 50],
+                        'reg_alpha': [0, 0.1, 0.5],
+                        'reg_lambda': [0, 0.1, 0.5]
+                    },
+                    'XGBoost': {
+                        'n_estimators': [100, 200],
+                        'max_depth': [3, 6],
+                        'learning_rate': [0.01, 0.1],
+                        'reg_alpha': [0, 0.1, 0.5],
+                        'reg_lambda': [0, 0.1, 0.5]
+                    },
+                    'Lasso': {'eps': [0.1, 0.01, 0.001]},
+                    'Ridge': {'alphas': [0.1, 1, 10]}
+                }
+                scoring = 'neg_mean_squared_error'
 
-            best_model = None
-            best_score = float('-inf')
-
+            best_models = {}
             for model_name, model in models.items():
-                cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring=scoring)
-                mean_cv_score = np.mean(cv_scores)
+                self.logger.info(f"Training and tuning {model_name} for {key} dataset")
+                grid_search = RandomizedSearchCV(
+                    model, 
+                    param_grids[model_name], 
+                    cv=5,  # 5-fold cross-validation
+                    scoring=scoring, 
+                    n_iter=20,
+                    n_jobs=-1, 
+                    random_state=42
+                )
+                grid_search.fit(X_train, y_train)
+                best_models[model_name] = grid_search.best_estimator_
+                self.logger.info(f"Best parameters for {model_name}: {grid_search.best_params_}")
+                self.logger.info(f"Best cross-validation score for {model_name}: {grid_search.best_score_}")
                 
-                if mean_cv_score > best_score:
-                    best_score = mean_cv_score
-                    best_model = model
+                # Perform additional cross-validation
+                cv_scores = cross_val_score(grid_search.best_estimator_, X_train, y_train, cv=5, scoring=scoring)
+                self.cv_scores[f"{key}_{model_name}"] = cv_scores
+                self.logger.info(f"Cross-validation scores for {model_name}: {cv_scores}")
+                self.logger.info(f"Mean CV score: {np.mean(cv_scores)}, Std CV score: {np.std(cv_scores)}")
 
-            best_model.fit(X_train, y_train)
-            
-            y_pred = best_model.predict(X_test)
             if is_classification:
-                accuracy = accuracy_score(y_test, y_pred)
-                self.logger.info(f"{key} - Test set accuracy: {accuracy:.4f}")
+                ensemble = VotingClassifier(
+                    estimators=[(name, model) for name, model in best_models.items()],
+                    voting='soft'
+                )
+            else:
+                ensemble = VotingRegressor(
+                    estimators=[(name, model) for name, model in best_models.items()]
+                )
+
+            ensemble.fit(X_train, y_train)
+        
+            y_pred = ensemble.predict(X_test)
+            if is_classification:
+                accuracy = balanced_accuracy_score(y_test, y_pred)
+                self.logger.info(f"{key} - Test set balanced accuracy: {accuracy:.4f}")
             else:
                 r2 = r2_score(y_test, y_pred)
-                self.logger.info(f"{key} - Test set R2: {r2:.4f}")
+                mse = mean_squared_error(y_test, y_pred)
+                self.logger.info(f"{key} - Test set R2: {r2:.4f}, MSE: {mse:.4f}")
 
-            self.models[key] = best_model
-            self.logger.info(f"Best model for {key} dataset: {type(best_model).__name__}")
+            self.models[key] = ensemble
+            self.logger.info(f"Best ensemble model for {key} dataset")
 
-            self.explain_model(key, best_model, X_test)
-            self.save_model(key, best_model)
+            self.explain_model(key, ensemble, X_test)
+            self.save_model(key, ensemble)
 
     def save_model(self, key, model):
         model_filename = f"{key}_model.joblib"
@@ -347,139 +462,101 @@ class EnhancedSustainabilityModel:
             self.logger.error(f"Error in geospatial analysis: {str(e)}")
             return {'error': str(e)}
 
+    def load_time_series_forecasts(self):
+        forecast_file = 'time_series_forecasts.csv'
+        if os.path.exists(forecast_file):
+            self.time_series_forecasts = pd.read_csv(forecast_file)
+            self.logger.info(f"Loaded time series forecasts from {forecast_file}")
+        else:
+            self.logger.warning(f"Time series forecast file {forecast_file} not found")
+
     def train_time_series_model(self):
+        forecast_file = 'time_series_forecasts.csv'
+        if os.path.exists(forecast_file):
+            self.load_time_series_forecasts()
+            self.logger.info("Using existing time series forecasts")
+            return
+
         try:
-            # Get the world bank data
             df = self.data['world_bank']
-            self.logger.info(f"World Bank data shape: {df.shape}")
-            self.logger.info(f"World Bank data columns: {df.columns.tolist()}")
+            df_prophet_all = self._prepare_prophet_data(df)
 
-            # Select relevant indicators for sustainability and GenAI
-            relevant_indicators = [
-                'Urban population (% of total population)',
-                'Urban population growth (annual %)',
-                'Population growth (annual %)',
-                'CO2 emissions (metric tons per capita)',
-                'CO2 emissions from liquid fuel consumption (% of total)',
-                'CO2 emissions from liquid fuel consumption (kt)',
-                'Renewable energy consumption (% of total final energy consumption)',
-                'Renewable electricity output (% of total electricity output)',
-                'Access to electricity (% of population)',
-                'Foreign direct investment, net inflows (% of GDP)',
-                'Forest area (% of land area)',
-                'Land area where elevation is below 5 meters (% of total land area)',
-                'Urban land area where elevation is below 5 meters (% of total land area)',
-                'Agricultural land (% of land area)',
-                'Internet users (per 100 people)',
-                'Research and development expenditure (% of GDP)'
-            ]
+            min_data_points = 64
+            groups = [(country, indicator, group) for (country, indicator), group in df_prophet_all.groupby(['country', 'indicator']) if len(group) >= min_data_points]
+            total_combinations = len(groups)
+            processed = 0
 
-            # Prepare data for Prophet
-            prophet_data = []
-            for indicator in relevant_indicators:
-                df_filtered = df[df['Indicator Name'] == indicator]
-                if not df_filtered.empty:
-                    df_prophet = df_filtered[['year', 'value', 'Country Name']].rename(columns={'year': 'ds', 'value': 'y', 'Country Name': 'country'})
-                    df_prophet['ds'] = pd.to_datetime(df_prophet['ds'], format='%Y')
-                    df_prophet['y'] = pd.to_numeric(df_prophet['y'], errors='coerce')
-                    df_prophet['indicator'] = indicator
-                    prophet_data.append(df_prophet)
-
-            df_prophet_all = pd.concat(prophet_data)
-            df_prophet_all = df_prophet_all.dropna().sort_values(['country', 'indicator', 'ds'])
-
-            # Check if we have sufficient data points
-            if len(df_prophet_all) < 100:  # Arbitrary threshold, adjust as needed
-                raise ValueError(f"Insufficient data points for time series modeling. Only {len(df_prophet_all)} valid data points found.")
-
-            # Log data preparation results
-            self.logger.info(f"Prepared data for time series modeling:")
-            self.logger.info(f"Number of indicators with data: {len(set(df_prophet_all['indicator']))}")
-            self.logger.info(f"Number of data points: {len(df_prophet_all)}")
-            self.logger.info(f"Date range: {df_prophet_all['ds'].min()} to {df_prophet_all['ds'].max()}")
-
-            def get_adaptive_min_points(indicator):
-                # Example logic for adaptive minimum points
-                if 'CO2 emissions' in indicator:
-                    return 3  # Require fewer points for CO2 data
-                elif 'Urban population' in indicator:
-                    return 4  # Require more points for urban population data
-                else:
-                    return 5  # Default minimum
-
-            # Train Prophet models for each country and indicator
             self.prophet_models = {}
-            successful_trainings = []
-            insufficient_data_count = 0
             self.model_confidence = {}
+            all_forecasts = []
 
-            for country in df_prophet_all['country'].unique():
-                self.prophet_models[country] = {}
-                for indicator in df_prophet_all[df_prophet_all['country'] == country]['indicator'].unique():
-                    df_country_indicator = df_prophet_all[(df_prophet_all['country'] == country) & (df_prophet_all['indicator'] == indicator)]
-                    min_data_points = get_adaptive_min_points(indicator)
-                    
-                    if len(df_country_indicator) >= min_data_points:
-                        model = Prophet(yearly_seasonality=True, daily_seasonality=False, weekly_seasonality=False)
-                        model.fit(df_country_indicator[['ds', 'y']])
-                        self.prophet_models[country][indicator] = model
-                        successful_trainings.append(f"{country} - {indicator}")
+            start_time = time.time()
+
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                futures = [executor.submit(self._train_and_forecast, country, indicator, group) for country, indicator, group in groups]
+
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        result = future.result()
+                        if result:
+                            country, indicator, model, confidence, forecast_data = result
+                            if country not in self.prophet_models:
+                                self.prophet_models[country] = {}
+                            self.prophet_models[country][indicator] = model
+                            self.model_confidence[(country, indicator)] = confidence
+                            all_forecasts.append(forecast_data)
                         
-                        # Calculate a simple confidence metric based on data points
-                        confidence = min(1.0, len(df_country_indicator) / 10)  # Max confidence at 10+ points
-                        self.model_confidence[(country, indicator)] = confidence
-                    else:
-                        insufficient_data_count += 1
+                        processed += 1
+                        self._print_progress(processed, total_combinations, start_time)
+                    except Exception as e:
+                        self.logger.error(f"Error processing future: {str(e)}")
 
-            # Log successful trainings and insufficient data information
-            self.logger.info(f"Successfully trained {len(successful_trainings)} Prophet models:")
-            for training in successful_trainings[:10]:
-                country, indicator = training.split(" - ")
-                confidence = self.model_confidence.get((country, indicator), 0)
-                self.logger.info(f"- {training} (Confidence: {confidence:.2f})")
-            if len(successful_trainings) > 10:
-                self.logger.info(f"... and {len(successful_trainings) - 10} more")
-            
-            self.logger.info(f"Number of country-indicator combinations with insufficient data: {insufficient_data_count}")
-
-            # Log data distribution information
-            data_distribution = df_prophet_all.groupby(['country', 'indicator']).size().describe()
-            self.logger.info(f"Data distribution across country-indicator combinations:")
-            self.logger.info(f"{data_distribution}")
-
-            # Generate and log some basic forecast metrics for a sample of models
-            sample_size = min(5, len(successful_trainings))
-            sampled_trainings = random.sample(successful_trainings, sample_size)
-            for training in sampled_trainings:
-                country, indicator = training.split(" - ")
-                model = self.prophet_models[country][indicator]
-                future = model.make_future_dataframe(periods=10, freq='Y')
-                forecast = model.predict(future)
-                last_known_value = df_prophet_all[(df_prophet_all['country'] == country) & (df_prophet_all['indicator'] == indicator)]['y'].iloc[-1]
-                forecasted_value = forecast['yhat'].iloc[-1]
-                confidence = self.model_confidence.get((country, indicator), 0)
-                self.logger.info(f"Sample forecast for {country}, {indicator} (Confidence: {confidence:.2f}):")
-                self.logger.info(f"  Last known value: {last_known_value:.2f}")
-                self.logger.info(f"  Forecasted value for last date: {forecasted_value:.2f}")
+            print("\nTime series modeling completed.")
+            self._save_forecasts(all_forecasts)
+            self.load_time_series_forecasts()
 
         except Exception as e:
             self.logger.error(f"Error in training time series model: {str(e)}")
-            self.logger.exception("Full traceback:")
             self.prophet_models = None
+            self.model_confidence = {}
 
-    def make_time_series_forecast(self, country, indicator, periods=365):
+    def make_time_series_forecast(self, country, indicator):
+        if self.time_series_forecasts is None:
+            self.load_time_series_forecasts()
+
+        if self.time_series_forecasts is not None:
+            forecast_data = self.time_series_forecasts[
+                (self.time_series_forecasts['country'] == country) &
+                (self.time_series_forecasts['indicator'] == indicator)
+            ]
+
+            if not forecast_data.empty:
+                result = {
+                    'forecast': [
+                        {
+                            'ds': f"{year}-01-01",
+                            'yhat': forecast_data[f'{year}_yhat'].values[0],
+                            'actual': forecast_data[f'{year}_actual'].values[0] if f'{year}_actual' in forecast_data.columns else None
+                        }
+                        for year in range(2020, 2026)
+                    ],
+                    'confidence': self.model_confidence.get((country, indicator), 0.8)
+                }
+                return result
+
+        # If forecast not found in CSV, fall back to training a new model
         try:
             if self.prophet_models is None or country not in self.prophet_models or indicator not in self.prophet_models[country]:
                 raise ValueError(f"No trained model found for {country}, {indicator}")
 
             model = self.prophet_models[country][indicator]
-            future_dates = model.make_future_dataframe(periods=periods)
+            future_dates = model.make_future_dataframe(periods=2, freq='Y')
             forecast = model.predict(future_dates)
 
             confidence = self.model_confidence.get((country, indicator), 0)
             
             result = {
-                'forecast': forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(periods).to_dict('records'),
+                'forecast': forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(2).to_dict('records'),
                 'confidence': confidence
             }
 
@@ -487,6 +564,69 @@ class EnhancedSustainabilityModel:
         except Exception as e:
             self.logger.error(f"Error in making time series forecast: {str(e)}")
             return {'error': str(e)}
+
+    def _prepare_prophet_data(self, df):
+        prophet_data = []
+        for _, group in df.groupby(['Country Name', 'Indicator Name']):
+            df_prophet = pd.DataFrame({
+                'ds': pd.to_datetime(group['year'], format='%Y'),
+                'y': pd.to_numeric(group['value'], errors='coerce'),
+                'country': group['Country Name'],
+                'indicator': group['Indicator Name']
+            })
+            prophet_data.append(df_prophet)
+        return pd.concat(prophet_data, ignore_index=True).dropna().sort_values(['country', 'indicator', 'ds'])
+
+
+    def _train_and_forecast(self, country, indicator, group):
+        try:
+            model = Prophet(yearly_seasonality=True, daily_seasonality=False, weekly_seasonality=False)
+            model.fit(group[['ds', 'y']])
+            
+            df_cv = cross_validation(model, initial='3650 days', period='365 days', horizon='730 days')
+            df_p = performance_metrics(df_cv)
+            rmse = df_p['rmse'].mean()
+            
+            confidence = min(1.0, (len(group) / 40) * (1 / (1 + rmse)))
+            
+            future = model.make_future_dataframe(periods=6, freq='Y')
+            forecast = model.predict(future)
+            
+            forecast_data = forecast[['ds', 'yhat']]
+            forecast_data['country'] = country
+            forecast_data['indicator'] = indicator
+            forecast_data['actual'] = group.set_index('ds')['y']
+            forecast_data = forecast_data[(forecast_data['ds'].dt.year >= 2020) & (forecast_data['ds'].dt.year <= 2025)]
+            
+            return country, indicator, model, confidence, forecast_data
+        except Exception:
+            return None
+
+    def _print_progress(self, processed, total, start_time):
+        progress = (processed / total) * 100
+        elapsed_time = time.time() - start_time
+        estimated_total_time = elapsed_time / (processed / total)
+        remaining_time = estimated_total_time - elapsed_time
+        
+        print(f"\rProgress: {progress:.2f}% | Elapsed: {elapsed_time:.2f}s | Remaining: {remaining_time:.2f}s", end="", flush=True)
+
+    def _save_forecasts(self, all_forecasts):
+        combined_forecasts = pd.concat(all_forecasts, ignore_index=True)
+        combined_forecasts['year'] = combined_forecasts['ds'].dt.year
+        pivot_forecasts = combined_forecasts.pivot_table(
+            values=['actual', 'yhat'],
+            index=['country', 'indicator'],
+            columns='year',
+            aggfunc='first'
+        )
+        pivot_forecasts.columns = [f'{col[1]}_{col[0]}' for col in pivot_forecasts.columns]
+        pivot_forecasts.reset_index(inplace=True)
+        column_order = ['country', 'indicator'] + [f'{year}_{col}' for year in range(2020, 2026) for col in ['actual', 'yhat']]
+        pivot_forecasts = pivot_forecasts.reindex(columns=column_order)
+        pivot_forecasts.to_csv('time_series_forecasts.csv', index=False)
+        print(f"\nForecasts saved to time_series_forecasts.csv")
+
+    
 
     def generate_sustainability_report(self, company_name: str) -> Dict[str, Any]:
         try:
@@ -503,11 +643,8 @@ class EnhancedSustainabilityModel:
             # Get energy data for the company's country
             country_energy_data = self.data['energy'][self.data['energy']['country'] == company_data['country']].iloc[-1].to_dict()
             
-            # Get urban population data
-            urban_pop_data = self.data['world_bank'][
-                (self.data['world_bank']['Country Name'] == company_data['country']) & 
-                (self.data['world_bank']['Indicator Name'] == 'Urban population (% of total population)')
-            ].iloc[-1]['value']
+            # Calculate ESG score
+            esg_score = self._calculate_esg_score(esg_data)
             
             report = {
                 'company_name': company_name,
@@ -516,40 +653,56 @@ class EnhancedSustainabilityModel:
                 'year_founded': company_data['year founded'],
                 'size_range': company_data['size range'],
                 'esg_scores': {
-                    'total': esg_data['Total ESG Risk score'],
+                    'total': esg_score,
                     'environment': esg_data['Environment Risk Score'],
                     'social': esg_data['Social Risk Score'],
                     'governance': esg_data['Governance Risk Score']
                 },
                 'sustainability_prediction': predictions['model_predictions']['rf'],
                 'key_factors': dict(sorted(predictions['feature_importance'].items(), key=lambda x: x[1], reverse=True)[:5]),
-                'recommendations': self._generate_recommendations(predictions, country_air_quality, country_energy_data),
+                'recommendations': self._generate_recommendations(predictions, country_air_quality, country_energy_data, esg_score),
                 'country_metrics': {
                     'air_quality': country_air_quality,
                     'energy': {
                         'renewable_electricity': country_energy_data.get('renewable_electricity', 'N/A'),
                         'energy_per_capita': country_energy_data.get('energy_per_capita', 'N/A'),
                         'co2_emissions': country_energy_data.get('co2_emissions', 'N/A')
-                    },
-                    'urban_population_percentage': urban_pop_data
-                }
+                    }
+                },
+                'innovative_potential': self._assess_innovative_potential(company_data, esg_score)
             }
-            
-            # Add SDG indicator information if available
-            sdg_data = self.data['sdg_indicator']
-            if not sdg_data.empty and 'Indicator Code' in sdg_data.columns:
-                relevant_sdg = sdg_data[sdg_data['Indicator Code'] == '17.16.1'].iloc[0]
-                report['sdg_indicator'] = {
-                    'indicator_code': relevant_sdg['Indicator Code'],
-                    'indicator_name': relevant_sdg['Indicator Name'],
-                    'sdg_index_score': relevant_sdg['sdg_index_score']
-                }
             
             self.logger.info(f"Sustainability report generated for {company_name}")
             return report
         except Exception as e:
             self.logger.error(f"Error in generating sustainability report: {str(e)}")
             return {'error': str(e)}
+
+    def _calculate_esg_score(self, esg_data: pd.Series) -> float:
+        weights = {'Environment Risk Score': 0.4, 'Social Risk Score': 0.3, 'Governance Risk Score': 0.3}
+        return sum(esg_data[key] * weight for key, weight in weights.items())
+
+    def _assess_innovative_potential(self, company_data: pd.Series, esg_score: float) -> Dict[str, Any]:
+        industry_innovativeness = self.data['innovative_startups'][self.data['innovative_startups']['Industry'] == company_data['industry']]['Last Valuation (Billion $)'].mean()
+        company_age = datetime.now().year - company_data['year founded']
+        
+        innovation_score = (industry_innovativeness / company_age) * (esg_score / 100)
+        
+        return {
+            'score': innovation_score,
+            'industry_comparison': 'Above average' if innovation_score > industry_innovativeness else 'Below average',
+            'potential_areas': self._generate_innovation_areas(company_data['industry'], esg_score)
+        }
+
+    def _generate_innovation_areas(self, industry: str, esg_score: float) -> List[str]:
+        areas = [
+            f"AI-driven {industry} solutions",
+            "Sustainable supply chain optimization",
+            "Circular economy business models"
+        ]
+        if esg_score > 80:
+            areas.append("ESG-focused product development")
+        return areas
 
     def _generate_recommendations(self, predictions: Dict[str, Any], air_quality: Dict[str, float], energy_data: Dict[str, float]) -> List[str]:
         recommendations = []
@@ -592,39 +745,19 @@ class EnhancedSustainabilityModel:
 class TextGenerator:
     def __init__(self, enhanced_model: EnhancedSustainabilityModel):
         self.enhanced_model = enhanced_model
-        self.gemini_model = genai.GenerativeModel('gemini-pro')
-        self.gpt2_model = GPT2LMHeadModel.from_pretrained('gpt2')
-        self.gpt2_tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        self.model = GPT2LMHeadModel.from_pretrained('gpt2')
+        self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
         self.logger = enhanced_model.logger
 
-    def generate(self, prompt: str, csv_file: str = None, use_gpt2: bool = False) -> str:
+    def generate(self, prompt: str, max_length: int = 100) -> str:
         try:
-            if csv_file:
-                df = self.enhanced_model.get_dataset(csv_file)
-                if df is not None:
-                    context = f"Based on the following data:\n{df.head().to_string()}\n\n"
-                    prompt = context + prompt
-                else:
-                    raise ValueError(f"Invalid CSV file name: {csv_file}")
-            
-            if use_gpt2:
-                return self._generate_with_gpt2(prompt)
-            else:
-                response = self.gemini_model.generate_content(prompt)
-                return response.text
-        except Exception as e:
-            self.logger.error(f"Error in text generation: {str(e)}")
-            return f"Error in text generation: {str(e)}"
-
-    def _generate_with_gpt2(self, prompt: str) -> str:
-        try:
-            input_ids = self.gpt2_tokenizer.encode(prompt, return_tensors='pt')
+            input_ids = self.tokenizer.encode(prompt, return_tensors='pt')
             attention_mask = torch.ones(input_ids.shape, dtype=torch.long)
             
-            output = self.gpt2_model.generate(
+            output = self.model.generate(
                 input_ids,
                 attention_mask=attention_mask,
-                max_length=150,
+                max_length=max_length,
                 num_return_sequences=1,
                 no_repeat_ngram_size=2,
                 top_k=50,
@@ -632,36 +765,10 @@ class TextGenerator:
                 temperature=0.7
             )
             
-            return self.gpt2_tokenizer.decode(output[0], skip_special_tokens=True)
+            return self.tokenizer.decode(output[0], skip_special_tokens=True)
         except Exception as e:
-            self.logger.error(f"Error in GPT-2 text generation: {str(e)}")
-            return f"Error in GPT-2 text generation: {str(e)}"
-class ImageGenerator:
-    def __init__(self, enhanced_model: EnhancedSustainabilityModel):
-        self.enhanced_model = enhanced_model
-        self.logger = enhanced_model.logger
-
-    def generate(self, prompt: str) -> str:
-        try:
-            # Use sustainability data to enhance the prompt
-            sustainability_context = self.enhanced_model.get_sustainability_context()
-            enhanced_prompt = f"{prompt} with consideration for {sustainability_context}"
-            
-            response = stability_api.generate(prompt=enhanced_prompt)
-            for resp in response:
-                for artifact in resp.artifacts:
-                    if artifact.finish_reason == generation.FILTER:
-                        raise ValueError("Your request activated the API's safety filters and could not be processed.")
-                    if artifact.type == generation.ARTIFACT_IMAGE:
-                        img_data = artifact.binary
-                        os.makedirs('generated_images', exist_ok=True)
-                        img_path = f"generated_images/{prompt[:20]}.png"
-                        with open(img_path, "wb") as f:
-                            f.write(img_data)
-                        return f"http://example.com/{img_path}"
-        except Exception as e:
-            self.logger.error(f"Error in image generation: {str(e)}")
-            return f"Error in image generation: {str(e)}"
+            self.logger.error(f"Error in text generation: {str(e)}")
+            return f"Error in text generation: {str(e)}"
 
 class PredictiveAnalytics:
     def __init__(self, enhanced_model: EnhancedSustainabilityModel):
@@ -731,7 +838,9 @@ class EnvironmentalImpactAnalyzer:
             return {'error': str(e)}
 
     def _get_air_quality(self, country: str) -> Dict[str, float]:
-        air_quality_data = self.enhanced_model.get_dataset('air_quality')
+        air_quality_data = self.enhanced_model.data.get('air_quality')
+        if air_quality_data is None:
+            return {'aqi_value': None, 'co_aqi_value': None, 'no2_aqi_value': None, 'pm2.5_aqi_value': None}
         country_data = air_quality_data[air_quality_data['country_name'] == country]
         if country_data.empty:
             return {'aqi_value': None, 'co_aqi_value': None, 'no2_aqi_value': None, 'pm2.5_aqi_value': None}
@@ -743,7 +852,9 @@ class EnvironmentalImpactAnalyzer:
         }
 
     def _get_energy_metrics(self, country: str, year: int) -> Dict[str, float]:
-        energy_data = self.enhanced_model.get_dataset('energy')
+        energy_data = self.enhanced_model.data.get('energy')
+        if energy_data is None:
+            return {'energy_per_capita': None, 'renewable_electricity': None}
         country_data = energy_data[(energy_data['country'] == country) & (energy_data['year'] == year)]
         if country_data.empty:
             return {'energy_per_capita': None, 'renewable_electricity': None}
@@ -753,7 +864,9 @@ class EnvironmentalImpactAnalyzer:
         }
 
     def _get_climate_indicators(self, country: str, year: int) -> Dict[str, float]:
-        world_bank_data = self.enhanced_model.get_dataset('world_bank')
+        world_bank_data = self.enhanced_model.data.get('world_bank')
+        if world_bank_data is None:
+            return {'urban_population_pct': None}
         country_data = world_bank_data[(world_bank_data['Country Name'] == country) & (world_bank_data['year'] == year)]
         if country_data.empty:
             return {'urban_population_pct': None}
@@ -784,58 +897,7 @@ class EnvironmentalImpactAnalyzer:
         else:
             recommendations.append("Maintain current environmental policies and continue to improve")
         return recommendations
-class ESGScoreCalculator:
-    def __init__(self, enhanced_model: EnhancedSustainabilityModel):
-        self.enhanced_model = enhanced_model
-        self.logger = enhanced_model.logger
 
-    def calculate_esg_score(self, company_data: Dict[str, Any]) -> Dict[str, Any]:
-        try:
-            input_data = pd.DataFrame([company_data])
-            esg_model = self.enhanced_model.get_model('esg_score')
-            esg_preprocessor = self.enhanced_model.get_preprocessor('esg_score')
-            
-            if esg_model is None or esg_preprocessor is None:
-                raise ValueError("ESG model or preprocessor not found")
-            
-            processed_input = esg_preprocessor.transform(input_data)
-            esg_score = esg_model.predict(processed_input)[0]
-
-            feature_importance = self._get_feature_importance(esg_model, 'esg_score')
-            component_scores = self._calculate_component_scores(processed_input, feature_importance)
-
-            return {
-                'total_esg_score': esg_score,
-                'environmental_score': component_scores['environmental'],
-                'social_score': component_scores['social'],
-                'governance_score': component_scores['governance'],
-                'feature_importance': feature_importance
-            }
-        except Exception as e:
-            self.logger.error(f"Error in ESG score calculation: {str(e)}")
-            return {'error': str(e)}
-
-    def _get_feature_importance(self, model, dataset_key):
-        if hasattr(model, 'feature_importances_'):
-            return dict(zip(self.enhanced_model.get_feature_names(dataset_key), model.feature_importances_))
-        return {}
-
-    def _calculate_component_scores(self, processed_input, feature_importance):
-        env_features = [f for f in feature_importance if 'environment' in f.lower()]
-        soc_features = [f for f in feature_importance if 'social' in f.lower()]
-        gov_features = [f for f in feature_importance if 'governance' in f.lower()]
-
-        return {
-            'environmental': self._weighted_score(processed_input, feature_importance, env_features),
-            'social': self._weighted_score(processed_input, feature_importance, soc_features),
-            'governance': self._weighted_score(processed_input, feature_importance, gov_features)
-        }
-
-    def _weighted_score(self, processed_input, feature_importance, features):
-        relevant_importances = [feature_importance[f] for f in features]
-        relevant_values = processed_input[0, [self.enhanced_model.get_feature_names('esg_score').index(f) for f in features]]
-        return np.dot(relevant_values, relevant_importances) / np.sum(relevant_importances)
-    
 class InnovativeBusinessModelGenerator:
     def __init__(self, enhanced_model: EnhancedSustainabilityModel):
         self.enhanced_model = enhanced_model
@@ -900,17 +962,6 @@ class InnovativeBusinessModelGenerator:
             'top_companies': top_companies,
             'average_valuation': avg_valuation
         }
-
-    def _calculate_sustainability_metrics(self, data: pd.DataFrame) -> Dict[str, float]:
-        company_data = {}
-        for column in ['Full Time Employees', 'Controversy Level', 'aqi_value', 'energy_per_capita', 'renewable_electricity', 'gdp']:
-            if column in data.columns:
-                company_data[column] = data[column].mean() if pd.api.types.is_numeric_dtype(data[column]) else data[column].mode()[0]
-            else:
-                company_data[column] = 0
-        
-        esg_calculator = ESGScoreCalculator(self.enhanced_model)
-        return esg_calculator.calculate_esg_score(company_data)
 
     def _calculate_innovation_score(self, data: pd.DataFrame) -> float:
         if 'Year Joined' in data.columns and 'Last Valuation (Billion $)' in data.columns:
@@ -1031,10 +1082,8 @@ if __name__ == "__main__":
 
     # Initialize other classes with the EnhancedSustainabilityModel
     text_generator = TextGenerator(enhanced_model)
-    image_generator = ImageGenerator(enhanced_model)
     predictive_analytics = PredictiveAnalytics(enhanced_model)
     environmental_impact_analyzer = EnvironmentalImpactAnalyzer(enhanced_model)
-    esg_score_calculator = ESGScoreCalculator(enhanced_model)
     business_model_generator = InnovativeBusinessModelGenerator(enhanced_model)
 
     # Example usage

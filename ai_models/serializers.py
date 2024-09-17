@@ -1,54 +1,39 @@
 from rest_framework import serializers
 
+class SustainabilityReportSerializer(serializers.Serializer):
+    company_name = serializers.CharField()
+    industry = serializers.CharField()
+    country = serializers.CharField()
+    year_founded = serializers.IntegerField()
+    size_range = serializers.CharField()
+    esg_scores = serializers.DictField()
+    sustainability_prediction = serializers.FloatField()
+    key_factors = serializers.DictField()
+    recommendations = serializers.ListField(child=serializers.CharField())
+    country_metrics = serializers.DictField()
+    sdg_indicator = serializers.DictField(required=False)
+
 class TextGenerationSerializer(serializers.Serializer):
-    prompt = serializers.CharField(max_length=1000)
-    csv_file = serializers.ChoiceField(choices=['air_quality', 'companies', 'energy', 'esg_score', 'innovative_startups', 'sdg_indicator', 'world_bank'], required=False)
+    prompt = serializers.CharField()
+    csv_file = serializers.CharField(required=False, allow_null=True)
     use_gpt2 = serializers.BooleanField(default=False)
 
-class ImageGenerationSerializer(serializers.Serializer):
-    prompt = serializers.CharField(max_length=1000)
-
-class PredictiveAnalyticsSerializer(serializers.Serializer):
+class PredictionSerializer(serializers.Serializer):
     data = serializers.DictField()
-    dataset_key = serializers.ChoiceField(choices=['air_quality', 'companies', 'energy', 'esg_score', 'innovative_startups', 'sdg_indicator', 'world_bank'])
+    dataset_key = serializers.CharField()
 
 class EnvironmentalImpactSerializer(serializers.Serializer):
-    country = serializers.CharField(max_length=100)
+    country = serializers.CharField()
     year = serializers.IntegerField()
-
-class ESGScoreSerializer(serializers.Serializer):
-    company_data = serializers.DictField()
 
 class BusinessModelSerializer(serializers.Serializer):
-    industry = serializers.CharField(max_length=100)
-    target_market = serializers.CharField(max_length=100)
-    key_resources = serializers.ListField(child=serializers.CharField(max_length=100))
-    description = serializers.CharField(max_length=1000, required=False)
-    country = serializers.CharField(max_length=100, required=False)
-
-class SustainabilityReportSerializer(serializers.Serializer):
-    company_name = serializers.CharField(max_length=100)
-
-class GeospatialAnalysisSerializer(serializers.Serializer):
-    pass  # No input needed for geospatial analysis
+    industry = serializers.CharField()
+    target_market = serializers.CharField()
+    key_resources = serializers.ListField(child=serializers.CharField())
+    description = serializers.CharField(required=False)
+    country = serializers.CharField(required=False)
 
 class TimeSeriesForecastSerializer(serializers.Serializer):
+    country = serializers.CharField()
+    indicator = serializers.CharField()
     periods = serializers.IntegerField(default=365)
-
-class ModelTrainingSerializer(serializers.Serializer):
-    pass  # No input needed for model training
-
-class DataLoadingSerializer(serializers.Serializer):
-    pass  # No input needed for data loading
-
-class FeatureEngineeringSerializer(serializers.Serializer):
-    pass  # No input needed for feature engineering
-
-class ModelExplanationSerializer(serializers.Serializer):
-    key = serializers.CharField(max_length=100)
-
-class CombinedAnalysisSerializer(serializers.Serializer):
-    company_name = serializers.CharField(max_length=100)
-    industry = serializers.CharField(max_length=100)
-    country = serializers.CharField(max_length=100)
-    year = serializers.IntegerField()
