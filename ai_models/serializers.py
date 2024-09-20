@@ -17,5 +17,3 @@ class TextPromptSerializer(serializers.Serializer):
 
 class ImagePromptSerializer(serializers.Serializer):
     prompt = serializers.CharField()
-
-# Note: We don't need model serializers since we're not using Django models

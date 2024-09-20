@@ -24,6 +24,7 @@ genai.configure(api_key=os.getenv("GOOGLE_AI_API_KEY"))
 stability_api = client.StabilityInference(key=os.getenv('STABILITY_KEY'), verbose=True)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
 class DataProcessor:
     def __init__(self):
         self.data = {}
@@ -47,6 +48,25 @@ class DataProcessor:
                 logger.error(f"Error loading {file}: {str(e)}")
                 self.data[key] = None
 
+    def identify_target_variable(self, key):
+        target_mapping = {
+            'ai_esg_alignment': 'esg_performance_score',
+            'ai_impact': 'process_efficiency_improvement',
+            'gen_ai_business': 'sustainable_growth_index'
+        }
+        
+        if target_mapping[key] in self.data[key].columns:
+            self.target_variables[key] = target_mapping[key]
+        else:
+            logger.warning(f"Target variable {target_mapping[key]} not found in {key} dataset. Using fallback.")
+            numerical_columns = self.data[key].select_dtypes(include=['int64', 'float64']).columns
+            if len(numerical_columns) > 0:
+                self.target_variables[key] = numerical_columns[-1]  # Use the last numerical column as target
+                logger.info(f"Using {self.target_variables[key]} as target variable for {key} dataset.")
+            else:
+                logger.warning(f"No suitable target variable found for {key} dataset.")
+                self.target_variables[key] = None
+
     def prepare_preprocessor(self, key):
         if self.data[key] is None or self.data[key].empty:
             logger.warning(f"No data available for {key}. Skipping preprocessor preparation.")
@@ -62,10 +82,10 @@ class DataProcessor:
         elif self.target_variables[key] in categorical_features:
             categorical_features = categorical_features.drop(self.target_variables[key])
 
-        # Remove 'id', 'company', and 'year' from features
-        columns_to_drop = ['id', 'company', 'year']
-        numeric_features = numeric_features.drop(columns_to_drop, errors='ignore')
-        categorical_features = categorical_features.drop(columns_to_drop, errors='ignore')
+        # Remove 'id', 'company', 'industry', and 'year' from features
+        columns_to_drop = ['id', 'company', 'industry', 'year']
+        numeric_features = numeric_features.drop([col for col in columns_to_drop if col in numeric_features])
+        categorical_features = categorical_features.drop([col for col in columns_to_drop if col in categorical_features])
 
         numeric_transformer = Pipeline([
             ('imputer', SimpleImputer(strategy='median')),
@@ -94,7 +114,7 @@ class DataProcessor:
             logger.warning(f"No target variable defined for {key}. Skipping feature and target extraction.")
             return None, None
         
-        columns_to_drop = ['id', 'company', 'year']
+        columns_to_drop = ['id', 'company', 'industry', 'year']
         columns_to_drop = [col for col in columns_to_drop if col in self.data[key].columns]
         columns_to_drop.append(self.target_variables[key])
         
@@ -111,33 +131,12 @@ class DataProcessor:
             else:
                 logger.warning(f"No data available for {key}. Skipping preprocessing.")
 
-
     def handle_missing_values(self, key):
         for column in self.data[key].columns:
             if self.data[key][column].dtype in ['int64', 'float64']:
                 self.data[key][column] = self.data[key][column].fillna(self.data[key][column].mean())
             else:
                 self.data[key][column] = self.data[key][column].fillna(self.data[key][column].mode()[0])
-
-    def identify_target_variable(self, key):
-        target_mapping = {
-            'ai_esg_alignment': 'esg_performance_score',
-            'ai_impact': 'process_efficiency_improvement',
-            'gen_ai_business': 'sustainable_growth_index'
-        }
-        
-        if target_mapping[key] in self.data[key].columns:
-            self.target_variables[key] = target_mapping[key]
-        else:
-            logger.warning(f"Target variable {target_mapping[key]} not found in {key} dataset. Using fallback.")
-            numerical_columns = self.data[key].select_dtypes(include=['int64', 'float64']).columns
-            if len(numerical_columns) > 0:
-                self.target_variables[key] = numerical_columns[-1]  # Use the last numerical column as target
-                logger.info(f"Using {self.target_variables[key]} as target variable for {key} dataset.")
-            else:
-                logger.warning(f"No suitable target variable found for {key} dataset.")
-                self.target_variables[key] = None
-
 class EnhancedSustainabilityModel:
     def __init__(self):
         self.data_processor = DataProcessor()
@@ -207,20 +206,6 @@ class EnhancedSustainabilityModel:
             self.logger.warning("Unable to train time series model: 'gen_ai_business' data is missing or empty")
             self.prophet_model = None
 
-    def make_predictions(self, input_data):
-        predictions = {}
-        for key, model in self.models.items():
-            preprocessor = self.data_processor.preprocessors[key]
-            features = self.data_processor.feature_names[key]
-            
-            input_df = pd.DataFrame([input_data])
-            input_preprocessed = preprocessor.transform(input_df[features])
-            
-            prediction = model.predict(input_preprocessed)[0]
-            predictions[key] = prediction
-        
-        return predictions
-
     def generate_sustainability_report(self, company_name):
         try:
             company_data = self._get_company_data(company_name)
@@ -237,9 +222,16 @@ class EnhancedSustainabilityModel:
                 'primary_ai_application': company_data.get('primary_ai_application', 'Unknown'),
                 'esg_score': company_data.get('esg_score', 'Unknown'),
                 'primary_esg_impact': company_data.get('primary_esg_impact', 'Unknown'),
+                'sustainable_growth_index': company_data.get('sustainable_growth_index', 'Unknown'),
+                'innovation_index': company_data.get('innovation_index', 'Unknown'),
                 'predictions': predictions,
                 'recommendations': self._generate_recommendations(company_data, predictions)
             }
+
+            # Add any additional columns that exist in the data
+            for key, value in company_data.items():
+                if key not in report:
+                    report[key] = value
 
             logger.info(f"Sustainability report generated for {company_name}")
             return report
@@ -253,32 +245,53 @@ class EnhancedSustainabilityModel:
         company_data = self.data_processor.data['gen_ai_business'][self.data_processor.data['gen_ai_business']['company'] == company_name]
         return company_data.iloc[0].to_dict() if not company_data.empty else None
 
+    def _generate_recommendations(self, company_data, predictions):
+        recommendations = []
+
+        if 'esg_score' in company_data and 'ai_esg_alignment' in predictions:
+            if predictions['ai_esg_alignment'] > company_data['esg_score']:
+                recommendations.append("Consider increasing AI investments in ESG initiatives to improve overall ESG performance.")
+
+        if 'ai_impact' in predictions and predictions['ai_impact'] > 50:
+            recommendations.append("Explore opportunities to leverage AI for process efficiency improvements across the organization.")
+
+        if 'gen_ai_business' in predictions and predictions['gen_ai_business'] > 0.5:
+            recommendations.append("Focus on integrating generative AI into your business model to drive sustainable growth.")
+
+        if 'ai_adoption_percentage' in company_data and company_data['ai_adoption_percentage'] < 50:
+            recommendations.append("Increase AI adoption across the organization to stay competitive and drive innovation.")
+
+        return recommendations
+
+    def make_predictions(self, input_data):
+        predictions = {}
+        for key, model in self.models.items():
+            preprocessor = self.data_processor.preprocessors[key]
+            features = self.data_processor.feature_names[key]
+            
+            # Ensure we only use features that are present in the input data
+            available_features = [f for f in features if f in input_data]
+            
+            if not available_features:
+                self.logger.warning(f"No matching features found for {key} model. Skipping prediction.")
+                continue
+
+            input_df = pd.DataFrame([{f: input_data[f] for f in available_features}])
+            input_preprocessed = preprocessor.transform(input_df)
+            
+            prediction = model.predict(input_preprocessed)[0]
+            predictions[key] = prediction
+        
+        return predictions
+
+    
+
     def _get_available_companies(self):
         if 'gen_ai_business' not in self.data_processor.data or self.data_processor.data['gen_ai_business'] is None:
             return []
         return self.data_processor.data['gen_ai_business']['company'].tolist()
 
-    def _generate_recommendations(self, company_data, predictions):
-        recommendations = []
-
-        if predictions.get('ai_esg_alignment', 0) > company_data.get('esg_score', 0):
-            recommendations.append("Consider increasing AI investments in ESG initiatives to improve overall ESG performance.")
-
-        if predictions.get('ai_impact', 0) > 50:
-            recommendations.append("Explore opportunities to leverage AI for process efficiency improvements across the organization.")
-
-        if predictions.get('gen_ai_business', 0) > 0.5:
-            recommendations.append("Focus on integrating generative AI into your business model to drive sustainable growth.")
-
-        if company_data.get('ai_adoption_percentage', 0) < 50:
-            recommendations.append("Increase AI adoption across the organization to stay competitive and drive innovation.")
-
-        return recommendations
-
-    def _calculate_sustainability_score(self, company_data: Dict[str, Any]) -> float:
-        return (company_data.get('esg_score', 0) * 0.4 + 
-                company_data.get('ai_adoption_percentage', 0) * 0.3 + 
-                company_data.get('sustainable_growth_index', 0) * 0.3)
+    
 
     @classmethod
     def run(cls):
@@ -490,9 +503,15 @@ class InnovativeBusinessModelGenerator:
             }
         return {}
 
+import base64
+import os
+from datetime import datetime
+
 class GenerativeImageCreator:
     def __init__(self):
         self.stability_api = stability_api
+        self.image_save_path = "generated_images"  # Directory to save images
+        os.makedirs(self.image_save_path, exist_ok=True)  # Create the folder if it doesn't exist
 
     def create_image(self, prompt: str) -> str:
         try:
@@ -505,18 +524,28 @@ class GenerativeImageCreator:
                 samples=1,
                 sampler=generation.SAMPLER_K_DPMPP_2M
             )
-            
+
             for resp in response:
                 for artifact in resp.artifacts:
                     if artifact.finish_reason == generation.FILTER:
                         return "Image generation failed due to content filter"
                     if artifact.type == generation.ARTIFACT_IMAGE:
-                        return artifact.binary  # Return the binary image data
-            
+                        # Generate a unique filename using the current timestamp
+                        filename = f"image_{datetime.now().strftime('%Y%m%d%H%M%S')}.png"
+                        file_path = os.path.join(self.image_save_path, filename)
+
+                        # Save the binary image data to a file
+                        with open(file_path, 'wb') as image_file:
+                            image_file.write(artifact.binary)
+
+                        # Return the file path or URL where the image is saved
+                        return f"Image saved at {file_path}"
+
             return "Image generation failed"
         except Exception as e:
             logger.error(f"Error in image generation: {str(e)}")
             return f"Error in image generation: {str(e)}"
+
 
 # Remove the main execution block and replace it with:
 def initialize_model():
