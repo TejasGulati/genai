@@ -88,6 +88,16 @@ const styles = {
   },
 };
 
+const formatKey = (key) => {
+  return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
+
+const cleanText = (text) => {
+  if (typeof text !== 'string') return text;
+  // Remove unwanted characters and markdown-style formatting
+  return text.replace(/\*\*/g, '').replace(/\\n/g, '\n').trim();
+};
+
 const RenderValue = ({ value }) => {
   if (value === null || value === undefined) {
     return <span style={{ color: '#D1D5DB' }}>N/A</span>;
@@ -99,7 +109,7 @@ const RenderValue = ({ value }) => {
         <ul style={{ listStyleType: 'disc', paddingLeft: '1.5rem', color: '#D1D5DB' }}>
           {value.map((item, index) => (
             <li key={index}>
-              {typeof item === 'object' ? <RenderValue value={item} /> : item}
+              {typeof item === 'object' ? <RenderValue value={item} /> : cleanText(item)}
             </li>
           ))}
         </ul>
@@ -115,7 +125,7 @@ const RenderValue = ({ value }) => {
               whileTap={{ scale: 0.95 }}
             >
               <h4 style={{ fontSize: '1.1rem', fontWeight: '600', color: 'white', marginBottom: '0.5rem' }}>
-                {key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                {formatKey(key)}
               </h4>
               <div style={{ color: '#D1D5DB' }}><RenderValue value={val} /></div>
             </motion.div>
@@ -125,7 +135,7 @@ const RenderValue = ({ value }) => {
     }
   }
 
-  return <span style={{ color: '#D1D5DB', wordBreak: 'break-word' }}>{value.toString()}</span>;
+  return <span style={{ color: '#D1D5DB', wordBreak: 'break-word' }}>{cleanText(value.toString())}</span>;
 };
 
 const Section = ({ title, children }) => {
@@ -208,6 +218,22 @@ export default function ImageGeneration() {
     }
   }, []);
 
+  const cleanData = (data) => {
+    if (typeof data !== 'object' || data === null) return data;
+    
+    const cleanedData = Array.isArray(data) ? [] : {};
+    for (const [key, value] of Object.entries(data)) {
+      if (typeof value === 'object' && value !== null) {
+        cleanedData[key] = cleanData(value);
+      } else if (typeof value === 'string') {
+        cleanedData[key] = cleanText(value);
+      } else {
+        cleanedData[key] = value;
+      }
+    }
+    return cleanedData;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -232,7 +258,8 @@ export default function ImageGeneration() {
       }
 
       if (response.data.ai_description) {
-        setAiDescription(response.data.ai_description);
+        const cleanedDescription = cleanData(response.data.ai_description);
+        setAiDescription(cleanedDescription);
       } else {
         console.warn('AI description not provided in the response');
       }

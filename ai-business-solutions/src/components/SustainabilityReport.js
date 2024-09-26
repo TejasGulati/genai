@@ -71,13 +71,6 @@ const styles = {
     color: 'white',
     border: '1px solid rgba(255, 255, 255, 0.2)',
   },
-  input: {
-    width: '100%',
-    backgroundColor: 'transparent',
-    border: 'none',
-    color: 'white',
-    fontSize: '1rem',
-  },
   error: {
     backgroundColor: 'rgba(220, 38, 38, 0.1)',
     color: '#FCA5A5',
@@ -94,10 +87,16 @@ const styles = {
     maxWidth: '100%',
   },
 };
+
 const formatKey = (key) => {
   return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
+const cleanText = (text) => {
+  if (typeof text !== 'string') return text;
+  // Remove unwanted characters and markdown-style formatting
+  return text.replace(/\*\*/g, '').replace(/\\n/g, '\n').trim();
+};
 
 const RenderValue = ({ value }) => {
   if (value === null || value === undefined) {
@@ -110,7 +109,7 @@ const RenderValue = ({ value }) => {
         <ul style={{ listStyleType: 'disc', paddingLeft: '1.5rem', color: '#D1D5DB' }}>
           {value.map((item, index) => (
             <li key={index}>
-              {typeof item === 'object' ? <RenderValue value={item} /> : item}
+              {typeof item === 'object' ? <RenderValue value={item} /> : cleanText(item)}
             </li>
           ))}
         </ul>
@@ -140,8 +139,9 @@ const RenderValue = ({ value }) => {
     return <span style={{ color: '#D1D5DB' }}>{value.toFixed(2)}</span>;
   }
 
-  return <span style={{ color: '#D1D5DB', wordBreak: 'break-word' }}>{value.toString()}</span>;
+  return <span style={{ color: '#D1D5DB', wordBreak: 'break-word' }}>{cleanText(value.toString())}</span>;
 };
+
 const Section = ({ title, data }) => {
   if (!data) return null;
   return (
@@ -218,6 +218,22 @@ export default function Sustainability() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const cleanData = (data) => {
+    if (typeof data !== 'object' || data === null) return data;
+    
+    const cleanedData = Array.isArray(data) ? [] : {};
+    for (const [key, value] of Object.entries(data)) {
+      if (typeof value === 'object' && value !== null) {
+        cleanedData[key] = cleanData(value);
+      } else if (typeof value === 'string') {
+        cleanedData[key] = cleanText(value);
+      } else {
+        cleanedData[key] = value;
+      }
+    }
+    return cleanedData;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -228,7 +244,8 @@ export default function Sustainability() {
       if (!response.data || !response.data.report || !response.data.ai_insights) {
         throw new Error('Incomplete data received from the server');
       }
-      setGeneratedData(response.data);
+      const cleanedData = cleanData(response.data);
+      setGeneratedData(cleanedData);
     } catch (error) {
       console.error('Error generating sustainability report:', error);
       setError('Failed to generate a complete sustainability report. Please try again in a few seconds.');

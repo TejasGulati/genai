@@ -92,6 +92,12 @@ const formatKey = (key) => {
   return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
+const cleanText = (text) => {
+  if (typeof text !== 'string') return text;
+  // Remove unwanted characters and markdown-style formatting
+  return text.replace(/\*\*/g, '').replace(/\\n/g, '\n').trim();
+};
+
 const RenderValue = ({ value }) => {
   if (value === null || value === undefined) {
     return <span style={{ color: '#D1D5DB' }}>N/A</span>;
@@ -103,7 +109,7 @@ const RenderValue = ({ value }) => {
         <ul style={{ listStyleType: 'disc', paddingLeft: '1.5rem', color: '#D1D5DB' }}>
           {value.map((item, index) => (
             <li key={index}>
-              {typeof item === 'object' ? <RenderValue value={item} /> : item}
+              {typeof item === 'object' ? <RenderValue value={item} /> : cleanText(item)}
             </li>
           ))}
         </ul>
@@ -133,7 +139,7 @@ const RenderValue = ({ value }) => {
     return <span style={{ color: '#D1D5DB' }}>{value.toFixed(2)}</span>;
   }
 
-  return <span style={{ color: '#D1D5DB', wordBreak: 'break-word' }}>{value.toString()}</span>;
+  return <span style={{ color: '#D1D5DB', wordBreak: 'break-word' }}>{cleanText(value.toString())}</span>;
 };
 
 const Section = ({ title, data }) => {
@@ -213,6 +219,22 @@ export default function EnvironmentalImpact() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const cleanData = (data) => {
+    if (typeof data !== 'object' || data === null) return data;
+    
+    const cleanedData = Array.isArray(data) ? [] : {};
+    for (const [key, value] of Object.entries(data)) {
+      if (typeof value === 'object' && value !== null) {
+        cleanedData[key] = cleanData(value);
+      } else if (typeof value === 'string') {
+        cleanedData[key] = cleanText(value);
+      } else {
+        cleanedData[key] = value;
+      }
+    }
+    return cleanedData;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -223,7 +245,8 @@ export default function EnvironmentalImpact() {
       if (!response.data || !response.data.impact || !response.data.ai_analysis) {
         throw new Error('Incomplete data received from the server');
       }
-      setGeneratedData(response.data);
+      const cleanedData = cleanData(response.data);
+      setGeneratedData(cleanedData);
     } catch (error) {
       console.error('Error analyzing environmental impact:', error);
       setError('Failed to generate a complete environmental impact analysis. Please try again in a few seconds.');
