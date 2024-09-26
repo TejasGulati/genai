@@ -11,6 +11,12 @@ import json
 import logging
 import os
 from datetime import datetime
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from .ml_model import initialized_model, EnvironmentalImpactAnalyzer, InnovativeBusinessModelGenerator
+from .serializers import CompanyNameSerializer, CompanyYearSerializer, CustomCompanyDataSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -111,19 +117,56 @@ class AIEnhancedView(APIView):
 
 class SustainabilityReportView(AIEnhancedView):
     def post(self, request):
-        serializer = CompanyNameSerializer(data=request.data)
+        if 'custom_data' in request.data:
+            serializer = CustomCompanyDataSerializer(data=request.data['custom_data'])
+        else:
+            serializer = CompanyNameSerializer(data=request.data)
+        
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        company_name = serializer.validated_data['company_name']
-        report = initialized_model.generate_sustainability_report(company_name)
+        if 'custom_data' in request.data:
+            report = self._generate_custom_sustainability_report(serializer.validated_data)
+        else:
+            company_name = serializer.validated_data['company_name']
+            report = initialized_model.generate_sustainability_report(company_name)
         
-        ai_insights = self._generate_ai_insights(company_name, report)
+        ai_insights = self._generate_ai_insights(report['company_name'], report)
         
         return Response({
             "report": report,
             "ai_insights": ai_insights
         })
+
+    def _generate_custom_sustainability_report(self, data):
+        report = {
+            "company_name": data['company_name'],
+            "industry": data['industry'],
+            "year": data['year'],
+            "ai_adoption_percentage": data['ai_adoption_percentage'],
+            "primary_ai_application": data['primary_ai_application'],
+            "esg_score": data['esg_score'],
+            "primary_esg_impact": data['primary_esg_impact'],
+            "sustainable_growth_index": data['sustainable_growth_index'],
+            "innovation_index": data['innovation_index'],
+            "predictions": {
+                "ai_esg_alignment": data['esg_score'],
+                "ai_impact": data['cost_reduction'],
+                "gen_ai_business": data['sustainable_growth_index']
+            },
+            "recommendations": self._generate_recommendations(data)
+        }
+        return report
+
+    def _generate_recommendations(self, data):
+        recommendations = []
+        if data['ai_adoption_percentage'] < 50:
+            recommendations.append("Consider increasing AI adoption to improve overall performance.")
+        if data['esg_score'] < 70:
+            recommendations.append(f"Focus on improving {data['primary_esg_impact']} to boost ESG performance.")
+        if data['sustainable_growth_index'] < 0.5:
+            recommendations.append("Develop strategies to enhance sustainable growth.")
+        return recommendations
 
     def _generate_ai_insights(self, company_name, report):
         try:
@@ -149,21 +192,51 @@ class SustainabilityReportView(AIEnhancedView):
 
 class EnvironmentalImpactView(AIEnhancedView):
     def post(self, request):
-        serializer = CompanyYearSerializer(data=request.data)
+        if 'custom_data' in request.data:
+            serializer = CustomCompanyDataSerializer(data=request.data['custom_data'])
+        else:
+            serializer = CompanyYearSerializer(data=request.data)
+        
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        company = serializer.validated_data['company']
-        year = serializer.validated_data['year']
-        analyzer = EnvironmentalImpactAnalyzer(initialized_model)
-        impact = analyzer.analyze(company, year)
+        if 'custom_data' in request.data:
+            impact = self._analyze_custom_environmental_impact(serializer.validated_data)
+        else:
+            company = serializer.validated_data['company']
+            year = serializer.validated_data['year']
+            analyzer = EnvironmentalImpactAnalyzer(initialized_model)
+            impact = analyzer.analyze(company, year)
         
-        ai_analysis = self._generate_ai_analysis(company, year, impact)
+        ai_analysis = self._generate_ai_analysis(impact['company'], impact['year'], impact)
         
         return Response({
             "impact": impact,
             "ai_analysis": ai_analysis
         })
+
+    def _analyze_custom_environmental_impact(self, data):
+        impact = {
+            "company": data['company_name'],
+            "year": data['year'],
+            "impact_score": data['esg_score'],
+            "ai_adoption_percentage": data['ai_adoption_percentage'],
+            "primary_ai_application": data['primary_ai_application'],
+            "esg_score": data['esg_score'],
+            "primary_esg_impact": data['primary_esg_impact'],
+            "recommendations": self._generate_environmental_recommendations(data)
+        }
+        return impact
+
+    def _generate_environmental_recommendations(self, data):
+        recommendations = []
+        if data['esg_score'] < 70:
+            recommendations.append(f"Increase focus on {data['primary_esg_impact']} to improve overall environmental impact.")
+        if data['ai_adoption_percentage'] < 50:
+            recommendations.append(f"Consider expanding use of AI in {data['primary_ai_application']} to drive efficiency and sustainability.")
+        if data['sustainable_growth_index'] < 0.5:
+            recommendations.append("Develop strategies to improve sustainable growth, possibly by leveraging AI technologies.")
+        return recommendations
 
     def _generate_ai_analysis(self, company, year, impact):
         try:
@@ -189,21 +262,62 @@ class EnvironmentalImpactView(AIEnhancedView):
 
 class BusinessModelView(AIEnhancedView):
     def post(self, request):
-        serializer = CompanyYearSerializer(data=request.data)
+        if 'custom_data' in request.data:
+            serializer = CustomCompanyDataSerializer(data=request.data['custom_data'])
+        else:
+            serializer = CompanyYearSerializer(data=request.data)
+        
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        company = serializer.validated_data['company']
-        year = serializer.validated_data['year']
-        generator = InnovativeBusinessModelGenerator(initialized_model)
-        business_model = generator.generate_business_model({'company': company, 'year': year})
+        if 'custom_data' in request.data:
+            business_model = self._generate_custom_business_model(serializer.validated_data)
+        else:
+            company = serializer.validated_data['company']
+            year = serializer.validated_data['year']
+            generator = InnovativeBusinessModelGenerator(initialized_model)
+            business_model = generator.generate_business_model({'company': company, 'year': year})
         
-        ai_enhancements = self._generate_ai_enhancements(company, year, business_model)
+        ai_enhancements = self._generate_ai_enhancements(business_model['company'], business_model['year'], business_model)
         
         return Response({
             "business_model": business_model,
             "ai_enhancements": ai_enhancements
         })
+
+    def _generate_custom_business_model(self, data):
+        business_model = {
+            "company": data['company_name'],
+            "year": data['year'],
+            "industry": data['industry'],
+            "ai_adoption_percentage": data['ai_adoption_percentage'],
+            "primary_ai_application": data['primary_ai_application'],
+            "esg_score": data['esg_score'],
+            "primary_esg_impact": data['primary_esg_impact'],
+            "sustainable_growth_index": data['sustainable_growth_index'],
+            "innovation_score": data['innovation_index'],
+            "market_insights": {
+                "revenue_growth": data['revenue_growth'],
+                "cost_reduction": data['cost_reduction'],
+                "employee_satisfaction": data['employee_satisfaction'],
+                "market_share_change": data['market_share_change']
+            },
+            "sustainability_metrics": {
+                "esg_score": data['esg_score'],
+                "sustainable_growth_index": data['sustainable_growth_index']
+            },
+            "innovation_score": data['innovation_index'],
+            "future_trends": self._generate_future_trends(data)
+        }
+        return business_model
+
+    def _generate_future_trends(self, data):
+        return {
+            "sustainable_growth_forecast": [
+                data['sustainable_growth_index'] * (1 + 0.05 * i) for i in range(1, 6)
+            ],
+            "forecast_dates": [data['year'] + i for i in range(1, 6)]
+        }
 
     def _generate_ai_enhancements(self, company, year, business_model):
         try:
