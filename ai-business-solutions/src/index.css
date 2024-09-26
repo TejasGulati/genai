@@ -1,3 +1,7 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -10,53 +14,4 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
-}
-
-nav ul {
-  list-style-type: none;
-  padding: 0;
-  display: flex;
-  justify-content: space-around;
-  background-color: #f8f9fa;
-  padding: 1rem 0;
-}
-
-nav ul li a {
-  text-decoration: none;
-  color: #333;
-}
-
-form {
-  display: flex;
-  flex-direction: column;
-  max-width: 300px;
-  margin: 0 auto;
-}
-
-input, textarea, button {
-  margin-bottom: 1rem;
-  padding: 0.5rem;
-}
-
-button {
-  background-color: #007bff;
-  color: white;
-  border: none;
-  cursor: pointer;
-}
-
-button:hover {
-  background-color: #0056b3;
-}
-
-h1, h2, h3 {
-  text-align: center;
-}
-
-pre {
-  background-color: #f8f9fa;
-  padding: 1rem;
-  border-radius: 4px;
-  white-space: pre-wrap;
-  word-wrap: break-word;
 }

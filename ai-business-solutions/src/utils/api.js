@@ -6,25 +6,18 @@ const api = axios.create({
 
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-    if (error.response.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        const response = await api.post('/api/users/refresh/', { refresh: refreshToken });
-        const { access } = response.data;
-        localStorage.setItem('token', access);
-        api.defaults.headers.common['Authorization'] = `Bearer ${access}`;
-        return api(originalRequest);
-      } catch (refreshError) {
-        // Refresh token is invalid, logout the user
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
-        delete api.defaults.headers.common['Authorization'];
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
-      }
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // Token has expired or is invalid
+      // Clear local storage
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      
+      // Remove Authorization header
+      delete api.defaults.headers.common['Authorization'];
+      
+      // Redirect to login page
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   }
