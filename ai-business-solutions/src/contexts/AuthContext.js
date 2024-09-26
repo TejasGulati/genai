@@ -52,10 +52,11 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     try {
       const response = await api.post('/api/users/login/', { email, password });
-      const { access, user: userData } = response.data;
+      const { access } = response.data;
       localStorage.setItem('token', access);
       api.defaults.headers.common['Authorization'] = `Bearer ${access}`;
-      setUser(userData);
+      const userResponse = await api.get('/api/users/user/');
+      setUser(userResponse.data);
       setIsAuthenticated(true);
       return "Login successful!";
     } catch (error) {
@@ -64,9 +65,17 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const register = async (email, password, name) => {
+  const register = async (email, password, name, username, location, company, phone) => {
     try {
-      const response = await api.post('/api/users/register/', { email, password, name });
+      const response = await api.post('/api/users/register/', { 
+        email, 
+        password, 
+        name, 
+        username, 
+        location, 
+        company, 
+        phone 
+      });
       return `Registration successful for ${response.data.email || email}! Please log in.`;
     } catch (error) {
       console.error('Registration error:', error.response?.data || error.message);

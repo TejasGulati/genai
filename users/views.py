@@ -90,39 +90,30 @@ class RefreshTokenView(APIView):
 
         return Response({'access': access_token})
 
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from users.serializers import UserSerializer
+from users.models import User
+
 class UserView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        authorization_header = request.headers.get('Authorization')
-
-        if not authorization_header:
-            raise AuthenticationFailed("Unauthenticated! No authorization header provided.")
-
-        parts = authorization_header.split()
-
-        if len(parts) != 2 or parts[0].lower() != 'bearer':
-            raise AuthenticationFailed("Invalid token format! Expected format is 'Bearer <token>'.")
-
-        access_token = parts[1]
-
-        # Check if token is blacklisted
-        if BlacklistedToken.objects.filter(token=access_token).exists():
-            raise AuthenticationFailed("Token is blacklisted!")
-
-        try:
-            payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=['HS256'])
-            if 'user_id' not in payload:
-                raise AuthenticationFailed("Token has no user_id field!")
-        except jwt.ExpiredSignatureError:
-            raise AuthenticationFailed("Token has expired!")
-        except jwt.InvalidTokenError as e:
-            raise AuthenticationFailed(f"Invalid token! {str(e)}")
-
-        user = get_object_or_404(User, id=payload['user_id'])
-
+        user = request.user
         serializer = UserSerializer(user)
         return Response(serializer.data)
+
+    def patch(self, request):
+        user = request.user
+        serializer = UserSerializer(user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 

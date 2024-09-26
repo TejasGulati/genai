@@ -1,14 +1,108 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
-import { Loader2, Leaf } from 'lucide-react';
+import { Loader2, Leaf, TrendingUp, BarChart2, FileText } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+const styles = {
+  button: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '0.75rem 1.5rem',
+    fontSize: '1rem',
+    fontWeight: '500',
+    borderRadius: '0.375rem',
+    color: 'white',
+    backgroundColor: '#10B981',
+    transition: 'all 0.3s',
+    border: 'none',
+    cursor: 'pointer',
+  },
+  card: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backdropFilter: 'blur(10px)',
+    borderRadius: '0.75rem',
+    padding: '1.5rem',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    transition: 'all 0.3s',
+    marginBottom: '1.5rem',
+  },
+  container: {
+    minHeight: '100vh',
+    background: 'linear-gradient(to bottom right, #065F46, #0F766E, #1E40AF)',
+    color: 'white',
+    padding: '4rem 1rem',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  content: {
+    maxWidth: '80rem',
+    margin: '0 auto',
+  },
+  title: {
+    fontSize: 'clamp(2rem, 5vw, 4rem)',
+    fontWeight: '800',
+    marginBottom: '2rem',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: '1.5rem',
+    fontWeight: '600',
+    marginBottom: '1rem',
+    textAlign: 'center',
+  },
+  featureGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+    gap: '1rem',
+    marginBottom: '2rem',
+  },
+  form: {
+    marginBottom: '5rem',
+    maxWidth: '600px',
+    margin: '0 auto',
+  },
+  input: {
+    width: '100%',
+    padding: '0.75rem',
+    fontSize: '1rem',
+    borderRadius: '0.375rem',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    color: 'white',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    marginBottom: '1rem',
+  },
+  error: {
+    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+    color: '#FCA5A5',
+    marginBottom: '2rem',
+  },
+  flexContainer: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '1.5rem',
+    justifyContent: 'flex-start',
+  },
+  flexItem: {
+    flex: '1 1 300px',
+    maxWidth: '100%',
+  },
+};
+
+const formatKey = (key) => {
+  return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
 
 const RenderValue = ({ value }) => {
-  if (typeof value === 'object' && value !== null) {
+  if (value === null || value === undefined) {
+    return <span style={{ color: '#D1D5DB' }}>N/A</span>;
+  }
+
+  if (typeof value === 'object') {
     if (Array.isArray(value)) {
       return (
-        <ul className="list-disc pl-5 space-y-2">
+        <ul style={{ listStyleType: 'disc', paddingLeft: '1.5rem', color: '#D1D5DB' }}>
           {value.map((item, index) => (
-            <li key={index} className="text-gray-200">
+            <li key={index}>
               {typeof item === 'object' ? <RenderValue value={item} /> : item}
             </li>
           ))}
@@ -16,117 +110,273 @@ const RenderValue = ({ value }) => {
       );
     } else {
       return (
-        <div className="grid grid-cols-1 gap-4">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
           {Object.entries(value).map(([key, val]) => (
-            <div key={key} className="bg-white bg-opacity-10 p-4 rounded-lg">
-              <h4 className="text-lg font-semibold text-white mb-2">{key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</h4>
-              <div className="text-gray-300"><RenderValue value={val} /></div>
-            </div>
+            <motion.div
+              key={key}
+              style={{ ...styles.card, flex: '1 1 300px' }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <h4 style={{ fontSize: '1.1rem', fontWeight: '600', color: 'white', marginBottom: '0.5rem' }}>
+                {formatKey(key)}
+              </h4>
+              <div style={{ color: '#D1D5DB' }}><RenderValue value={val} /></div>
+            </motion.div>
           ))}
         </div>
       );
     }
   }
-  return <span className="text-gray-200 whitespace-pre-wrap">{value}</span>;
+
+  if (typeof value === 'number') {
+    return <span style={{ color: '#D1D5DB' }}>{value.toFixed(2)}</span>;
+  }
+
+  return <span style={{ color: '#D1D5DB', wordBreak: 'break-word' }}>{value.toString()}</span>;
 };
 
 const Section = ({ title, data }) => {
   if (!data) return null;
   return (
-    <div className="bg-white bg-opacity-10 backdrop-filter backdrop-blur-lg border border-white border-opacity-20 rounded-lg shadow-lg p-6 mb-6 transition-all duration-300 ease-in-out hover:shadow-xl">
-      <h3 className="text-xl font-semibold mb-4 text-white border-b border-white border-opacity-20 pb-2">{title}</h3>
-      <RenderValue value={data} />
-    </div>
+    <motion.div
+      style={{...styles.card, marginBottom: '2rem'}}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <h3 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'white', marginBottom: '1.5rem' }}>
+        {formatKey(title)}
+      </h3>
+      <div style={styles.flexContainer}>
+        {Object.entries(data).map(([key, val]) => (
+          <motion.div key={key} style={{ ...styles.card, ...styles.flexItem, margin: 0 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <h4 style={{ fontSize: '1.1rem', fontWeight: '600', color: 'white', marginBottom: '0.75rem' }}>
+              {formatKey(key)}
+            </h4>
+            <div style={{ color: '#D1D5DB' }}><RenderValue value={val} /></div>
+          </motion.div>
+        ))}
+      </div>
+    </motion.div>
+  );
+};
+
+const FeatureCard = ({ title, description, icon: Icon }) => {
+  return (
+    <motion.div
+      style={{
+        ...styles.card,
+        ...styles.flexItem,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        textAlign: 'center',
+      }}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+    >
+      <div style={{
+        width: '60px',
+        height: '60px',
+        borderRadius: '50%',
+        backgroundColor: '#10B981',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: '1rem'
+      }}>
+        <Icon size={30} color="white" />
+      </div>
+      <h4 style={{ fontSize: '1.2rem', fontWeight: '600', color: 'white', marginBottom: '0.5rem' }}>
+        {title}
+      </h4>
+      <p style={{ color: '#D1D5DB' }}>{description}</p>
+    </motion.div>
   );
 };
 
 export default function EnvironmentalImpact() {
   const [company, setCompany] = useState('');
   const [year, setYear] = useState('');
-  const [impact, setImpact] = useState(null);
+  const [generatedData, setGeneratedData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => setScrollY(window.scrollY);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    setGeneratedData(null);
     try {
       const response = await api.post('/api/environmental-impact/', { company, year });
-      setImpact(response.data);
+      if (!response.data || !response.data.impact || !response.data.ai_analysis) {
+        throw new Error('Incomplete data received from the server');
+      }
+      setGeneratedData(response.data);
     } catch (error) {
       console.error('Error analyzing environmental impact:', error);
-      setError('Failed to analyze environmental impact. Please try again.');
+      setError('Failed to generate a complete environmental impact analysis. Please try again in a few seconds.');
     } finally {
       setLoading(false);
     }
   };
 
+  const features = [
+    {
+      title: "Environmental Reports",
+      description: "Generate comprehensive environmental impact reports with AI-driven insights.",
+      icon: FileText
+    },
+    {
+      title: "Impact Analysis",
+      description: "Analyze and visualize your company's environmental impact using advanced AI algorithms.",
+      icon: Leaf
+    },
+    {
+      title: "Mitigation Strategies",
+      description: "Explore AI-generated strategies to mitigate negative environmental impacts.",
+      icon: TrendingUp
+    },
+    {
+      title: "Performance Metrics",
+      description: "Leverage AI-powered analytics to track and improve environmental performance metrics.",
+      icon: BarChart2
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-800 via-teal-800 to-blue-800 text-white p-8 pt-24">
-      <div className="max-w-4xl mx-auto">
-        <h2 className="text-4xl font-bold mb-8 text-center">Environmental Impact Analysis</h2>
-        <form onSubmit={handleSubmit} className="mb-8">
-          <div className="flex flex-col sm:flex-row gap-4">
+    <div style={styles.container}>
+      <div style={styles.content}>
+        <motion.h2
+          style={{...styles.title, marginBottom: '3rem'}}
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+        >
+          AI-Powered Environmental Impact Analysis
+        </motion.h2>
+        
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.2 }}
+          style={{marginBottom: '4rem'}}
+        >
+          <h3 style={{...styles.subtitle, marginBottom: '2rem'}}>Our Features</h3>
+          <div style={styles.flexContainer}>
+            {features.map((feature, index) => (
+              <FeatureCard key={index} {...feature} />
+            ))}
+          </div>
+        </motion.div>
+
+        <motion.form 
+          onSubmit={handleSubmit} 
+          style={{...styles.form, marginBottom: '4rem'}}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.4 }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <input
               type="text"
-              placeholder="Company Name"
+              placeholder="Enter Company Name"
               value={company}
               onChange={(e) => setCompany(e.target.value)}
               required
-              className="flex-grow bg-white bg-opacity-10 border border-white border-opacity-20 p-3 rounded-md focus:ring-2 focus:ring-green-400 focus:border-transparent placeholder-gray-400 text-white"
+              style={styles.input}
             />
             <input
               type="number"
-              placeholder="Year"
+              placeholder="Enter Year"
               value={year}
               onChange={(e) => setYear(e.target.value)}
               required
-              className="flex-grow bg-white bg-opacity-10 border border-white border-opacity-20 p-3 rounded-md focus:ring-2 focus:ring-green-400 focus:border-transparent placeholder-gray-400 text-white"
+              style={styles.input}
             />
-            <button
-              type="submit"
-              className="bg-green-500 text-white px-6 py-3 rounded-md hover:bg-green-600 transition duration-300 ease-in-out flex items-center justify-center min-w-[150px] shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            <motion.button 
+              type="submit" 
+              style={styles.button} 
               disabled={loading}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
               {loading ? (
                 <>
-                  <Loader2 className="animate-spin mr-2" size={20} />
+                  <Loader2 style={{ marginRight: '0.75rem', animation: 'spin 1s linear infinite' }} size={24} />
                   Analyzing...
                 </>
               ) : (
                 <>
-                  <Leaf className="mr-2" size={20} />
-                  Analyze Impact
+                  <Leaf style={{ marginRight: '0.75rem' }} size={24} />
+                  Analyze Environmental Impact
                 </>
               )}
-            </button>
+            </motion.button>
           </div>
-        </form>
+        </motion.form>
         
-        {error && (
-          <div className="bg-red-500 bg-opacity-20 border-l-4 border-red-500 text-white p-4 mb-6 rounded-md" role="alert">
-            <p className="font-bold">Error</p>
-            <p>{error}</p>
-          </div>
-        )}
+        <AnimatePresence>
+          {error && (
+            <motion.div 
+              style={{ ...styles.card, ...styles.error, marginBottom: '2rem' }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.5 }}
+            >
+              <p style={{ fontWeight: '600', marginBottom: '0.75rem' }}>Error</p>
+              <p>{error}</p>
+            </motion.div>
+          )}
 
-        {loading && (
-          <div className="flex justify-center items-center mb-8">
-            <div className="animate-pulse flex flex-col items-center">
-              <Loader2 className="animate-spin mb-2" size={40} />
-              <p className="text-gray-300">Analyzing environmental impact...</p>
-            </div>
-          </div>
-        )}
+          {loading && (
+            <motion.div 
+              style={{ textAlign: 'center', marginBottom: '3rem' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <p style={{ marginTop: '1.5rem', color: '#D1D5DB' }}>Analyzing environmental impact...</p>
+            </motion.div>
+          )}
 
-        {impact && (
-          <div className="space-y-6">
-            <Section title="Impact Overview" data={impact.impact} />
-            <Section title="AI Analysis" data={impact.ai_analysis} />
-          </div>
-        )}
+          {generatedData && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.5 }}
+              style={{marginTop: '3rem'}}
+            >
+              <Section title="Environmental Impact" data={generatedData.impact} />
+              <Section title="AI Analysis" data={generatedData.ai_analysis} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath opacity='.5' d='M96 95h4v1h-4v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9zm-1 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9h9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9z'/%3E%3Cpath d='M6 5V0H5v5H0v1h5v94h1V6h94V5H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          transform: `translateY(${scrollY * 0.5}px)`,
+          pointerEvents: 'none',
+        }}
+      />
     </div>
   );
 }

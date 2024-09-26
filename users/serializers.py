@@ -1,3 +1,6 @@
+
+# users/serializers.py
+
 from rest_framework import serializers
 from users.models import User
 from django.core.exceptions import ValidationError
@@ -6,9 +9,10 @@ from django.core.validators import validate_email
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'name', 'email', 'password']
+        fields = ['id', 'name', 'email', 'username', 'password', 'date_joined', 'location', 'company', 'phone']
         extra_kwargs = {
-            'password': {'write_only': True}
+            'password': {'write_only': True},
+            'date_joined': {'read_only': True}
         }
 
     def validate_email(self, value):
@@ -18,6 +22,11 @@ class UserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Enter a valid email address.")
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError("This email is already taken.")
+        return value
+
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("This username is already taken.")
         return value
 
     def create(self, validated_data):

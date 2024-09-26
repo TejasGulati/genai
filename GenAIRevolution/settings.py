@@ -69,7 +69,7 @@ WSGI_APPLICATION = 'GenAIRevolution.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'GENAI',
+        'NAME': 'genaii',
         'USER': 'root',
         'PASSWORD': 'iamnoobokay',
         'HOST': 'localhost',  
