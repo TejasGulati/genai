@@ -16,14 +16,14 @@ const RenderValue = ({ value }) => {
       );
     } else {
       return (
-        <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           {Object.entries(value).map(([key, val]) => (
-            <div key={key} className="bg-white bg-opacity-10 p-3 rounded-md">
-              <dt className="font-semibold text-gray-200 mb-1">{key.replace(/_/g, ' ')}</dt>
-              <dd className="text-gray-300"><RenderValue value={val} /></dd>
+            <div key={key} className="bg-white bg-opacity-10 p-4 rounded-lg">
+              <h4 className="text-lg font-semibold text-white mb-2">{key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</h4>
+              <div className="text-gray-300"><RenderValue value={val} /></div>
             </div>
           ))}
-        </dl>
+        </div>
       );
     }
   }

@@ -16,14 +16,14 @@ const RenderValue = ({ value }) => {
       );
     } else {
       return (
-        <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           {Object.entries(value).map(([key, val]) => (
-            <div key={key} className="bg-white bg-opacity-10 p-3 rounded-md">
-              <dt className="font-semibold text-gray-200 mb-1">{key.replace(/_/g, ' ')}</dt>
-              <dd className="text-gray-300"><RenderValue value={val} /></dd>
+            <div key={key} className="bg-white bg-opacity-10 p-4 rounded-lg">
+              <h4 className="text-lg font-semibold text-white mb-2">{key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</h4>
+              <div className="text-gray-300"><RenderValue value={val} /></div>
             </div>
           ))}
-        </dl>
+        </div>
       );
     }
   }
@@ -36,7 +36,7 @@ const Section = ({ title, data }) => {
     <div className="bg-white bg-opacity-10 backdrop-filter backdrop-blur-lg border border-white border-opacity-20 rounded-lg shadow-lg p-6 mb-6 transition-all duration-300 ease-in-out hover:shadow-xl">
       <h3 className="text-xl font-semibold mb-4 text-white border-b border-white border-opacity-20 pb-2">{title}</h3>
       <RenderValue value={data} />
-      </div>
+    </div>
   );
 };
 
@@ -67,14 +67,14 @@ export default function BusinessModel() {
       <div className="max-w-4xl mx-auto">
         <h2 className="text-4xl font-bold mb-8 text-center">Innovative Business Model Generator</h2>
         <form onSubmit={handleSubmit} className="mb-8">
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row gap-4">
             <input
               type="text"
               placeholder="Company Name"
               value={company}
               onChange={(e) => setCompany(e.target.value)}
               required
-              className="w-full bg-white bg-opacity-10 border border-white border-opacity-20 p-3 rounded-md focus:ring-2 focus:ring-emerald-400 focus:border-transparent placeholder-gray-400 text-white"
+              className="flex-grow bg-white bg-opacity-10 border border-white border-opacity-20 p-3 rounded-md focus:ring-2 focus:ring-emerald-400 focus:border-transparent placeholder-gray-400 text-white"
             />
             <input
               type="number"
@@ -82,7 +82,7 @@ export default function BusinessModel() {
               value={year}
               onChange={(e) => setYear(e.target.value)}
               required
-              className="w-full bg-white bg-opacity-10 border border-white border-opacity-20 p-3 rounded-md focus:ring-2 focus:ring-emerald-400 focus:border-transparent placeholder-gray-400 text-white"
+              className="flex-grow bg-white bg-opacity-10 border border-white border-opacity-20 p-3 rounded-md focus:ring-2 focus:ring-emerald-400 focus:border-transparent placeholder-gray-400 text-white"
             />
             <button
               type="submit"

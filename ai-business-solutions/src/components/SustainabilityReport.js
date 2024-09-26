@@ -1,14 +1,42 @@
 import React, { useState } from 'react';
 import api from '../utils/api';
-import { Loader2, FileText } from 'lucide-react';
+import { Loader2, Type, Sliders } from 'lucide-react';
+
+const buttonStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '0.75rem 1.5rem',
+  fontSize: '1rem',
+  fontWeight: '500',
+  borderRadius: '0.375rem',
+  color: 'white',
+  backgroundColor: '#10B981',
+  transition: 'background-color 0.3s',
+  border: 'none',
+  cursor: 'pointer',
+};
+
+const cardStyle = {
+  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  backdropFilter: 'blur(10px)',
+  borderRadius: '0.75rem',
+  padding: '1.5rem',
+  border: '1px solid rgba(255, 255, 255, 0.2)',
+  transition: 'all 0.3s',
+  marginBottom: '1.5rem',
+};
+
+const formatKey = (key) => {
+  return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
 
 const RenderValue = ({ value }) => {
   if (typeof value === 'object' && value !== null) {
     if (Array.isArray(value)) {
       return (
-        <ul className="list-disc pl-5 space-y-2">
+        <ul style={{ listStyleType: 'disc', paddingLeft: '1.5rem', color: '#D1D5DB' }}>
           {value.map((item, index) => (
-            <li key={index} className="text-gray-300">
+            <li key={index}>
               {typeof item === 'object' ? <RenderValue value={item} /> : item}
             </li>
           ))}
@@ -16,33 +44,34 @@ const RenderValue = ({ value }) => {
       );
     } else {
       return (
-        <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
           {Object.entries(value).map(([key, val]) => (
-            <div key={key} className="bg-white bg-opacity-10 p-3 rounded-md">
-              <dt className="font-semibold text-gray-200 mb-1">{key.replace(/_/g, ' ')}</dt>
-              <dd className="text-gray-300"><RenderValue value={val} /></dd>
+            <div key={key} style={{ ...cardStyle, flex: '1 1 300px' }}>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: '600', color: 'white', marginBottom: '0.5rem' }}>{formatKey(key)}</h4>
+              <div style={{ color: '#D1D5DB' }}><RenderValue value={val} /></div>
             </div>
           ))}
-        </dl>
+        </div>
       );
     }
   }
-  return <span className="text-gray-300">{value}</span>;
+  return <span style={{ color: '#D1D5DB' }}>{value}</span>;
 };
 
 const Section = ({ title, data }) => {
   if (!data) return null;
   return (
-    <div className="border border-white border-opacity-20 rounded-lg shadow-sm p-6 mb-6 bg-white bg-opacity-5 transition-all duration-300 ease-in-out hover:bg-opacity-10">
-      <h3 className="text-xl font-semibold mb-4 text-white border-b border-white border-opacity-20 pb-2">{title}</h3>
+    <div style={cardStyle}>
+      <h3 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'white', marginBottom: '1rem' }}>{formatKey(title)}</h3>
       <RenderValue value={data} />
     </div>
   );
 };
 
-export default function SustainabilityReport() {
-  const [companyName, setCompanyName] = useState('');
-  const [report, setReport] = useState(null);
+export default function TextGeneration() {
+  const [prompt, setPrompt] = useState('');
+  const [maxLength, setMaxLength] = useState(100);
+  const [generatedText, setGeneratedText] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -51,72 +80,102 @@ export default function SustainabilityReport() {
     setError(null);
     setLoading(true);
     try {
-      const response = await api.post('/api/sustainability-report/', { company_name: companyName });
-      setReport(response.data);
+      const response = await api.post('/api/generate-text/', { prompt, max_length: maxLength });
+      setGeneratedText(response.data.generated_text);
     } catch (error) {
-      console.error('Error generating sustainability report:', error);
-      setError('Failed to generate report. Please try again.');
+      console.error('Error generating text:', error);
+      setError('Failed to generate text. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-800 via-teal-800 to-blue-800 text-white p-8 pt-24">
-      <div className="max-w-4xl mx-auto">
-        <h2 className="text-3xl font-bold mb-8 text-center">Sustainability Report</h2>
-        <form onSubmit={handleSubmit} className="mb-8 max-w-2xl mx-auto">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <input
-              type="text"
-              placeholder="Company Name"
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
+    <div style={{ 
+      minHeight: '100vh', 
+      background: 'linear-gradient(to bottom right, #065F46, #0F766E, #1E40AF)',
+      color: 'white',
+      padding: '4rem 1rem'
+    }}>
+      <div style={{ maxWidth: '80rem', margin: '0 auto' }}>
+        <h2 style={{ fontSize: 'clamp(2rem, 5vw, 4rem)', fontWeight: '800', marginBottom: '2rem', textAlign: 'center' }}>Text Generation</h2>
+        <form onSubmit={handleSubmit} style={{ marginBottom: '2rem', maxWidth: '600px', margin: '0 auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <textarea
+              placeholder="Enter Prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
               required
-              className="flex-grow bg-white bg-opacity-10 border border-white border-opacity-20 p-3 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm transition-all duration-300 ease-in-out text-white placeholder-gray-300"
+              style={{
+                width: '100%',
+                height: '8rem',
+                padding: '0.75rem',
+                fontSize: '1rem',
+                borderRadius: '0.375rem',
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                color: 'white',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+              }}
             />
-            <button
-              type="submit"
-              className="bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 transition duration-300 ease-in-out flex items-center justify-center min-w-[150px] shadow-sm hover:shadow"
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="animate-spin mr-2" size={20} />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <FileText className="mr-2" size={20} />
-                  Generate Report
-                </>
-              )}
-            </button>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <div style={{ 
+                flex: 1, 
+                display: 'flex', 
+                alignItems: 'center', 
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '0.375rem',
+                padding: '0.5rem'
+              }}>
+                <Sliders style={{ color: '#D1D5DB', marginRight: '0.5rem' }} size={20} />
+                <input
+                  type="number"
+                  placeholder="Max Length"
+                  value={maxLength}
+                  onChange={(e) => setMaxLength(Number(e.target.value))}
+                  required
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    color: 'white',
+                    fontSize: '1rem',
+                  }}
+                />
+              </div>
+              <button type="submit" style={buttonStyle} disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 style={{ marginRight: '0.5rem', animation: 'spin 1s linear infinite' }} size={20} />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Type style={{ marginRight: '0.5rem' }} size={20} />
+                    Generate Text
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
         
         {error && (
-          <div className="bg-red-900 bg-opacity-50 border-l-4 border-red-500 text-white p-4 mb-6 rounded-md max-w-2xl mx-auto" role="alert">
-            <p className="font-bold">Error</p>
+          <div style={{ ...cardStyle, backgroundColor: 'rgba(220, 38, 38, 0.1)', color: '#FCA5A5', marginBottom: '2rem' }}>
+            <p style={{ fontWeight: '600', marginBottom: '0.5rem' }}>Error</p>
             <p>{error}</p>
           </div>
         )}
 
         {loading && (
-          <div className="flex justify-center items-center mb-8">
-            <div className="animate-pulse flex flex-col items-center">
-              <Loader2 className="animate-spin mb-2" size={40} />
-              <p className="text-gray-300">Generating report...</p>
-            </div>
+          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+            <Loader2 style={{ animation: 'spin 1s linear infinite' }} size={40} />
+            <p style={{ marginTop: '1rem', color: '#D1D5DB' }}>Generating text...</p>
           </div>
         )}
 
-        {report && (
-          <div className="space-y-6">
-            {Object.entries(report).map(([key, value]) => (
-              <Section key={key} title={key.replace(/_/g, ' ')} data={value} />
-            ))}
-          </div>
+        {generatedText && (
+          <Section title="Generated Text" data={generatedText} />
         )}
       </div>
     </div>

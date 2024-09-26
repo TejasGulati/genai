@@ -2,15 +2,53 @@ import React, { useState } from 'react';
 import api from '../utils/api';
 import { Loader2, Type, Sliders } from 'lucide-react';
 
+const cardStyle = {
+  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  backdropFilter: 'blur(10px)',
+  borderRadius: '0.75rem',
+  padding: '1.5rem',
+  border: '1px solid rgba(255, 255, 255, 0.2)',
+  transition: 'all 0.3s',
+  marginBottom: '1.5rem',
+};
+
+const buttonStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '0.75rem 1.5rem',
+  fontSize: '1rem',
+  fontWeight: '500',
+  borderRadius: '0.375rem',
+  color: 'white',
+  backgroundColor: '#3B82F6',
+  transition: 'background-color 0.3s',
+  border: 'none',
+  cursor: 'pointer',
+};
+
 const RenderValue = ({ value }) => {
-  return <span className="text-gray-300 whitespace-pre-wrap">{value}</span>;
+  if (typeof value === 'string') {
+    return <span style={{ color: '#D1D5DB', whiteSpace: 'pre-wrap' }}>{value}</span>;
+  } else if (typeof value === 'object') {
+    return (
+      <div>
+        {Object.entries(value).map(([key, val]) => (
+          <div key={key}>
+            <strong>{key}: </strong>
+            <RenderValue value={val} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
 };
 
 const Section = ({ title, data }) => {
   if (!data) return null;
   return (
-    <div className="border border-white border-opacity-20 rounded-lg shadow-sm p-6 mb-6 bg-white bg-opacity-5 transition-all duration-300 ease-in-out hover:bg-opacity-10">
-      <h3 className="text-xl font-semibold mb-4 text-white border-b border-white border-opacity-20 pb-2">{title}</h3>
+    <div style={cardStyle}>
+      <h3 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'white', marginBottom: '1rem', borderBottom: '1px solid rgba(255, 255, 255, 0.2)', paddingBottom: '0.5rem' }}>{title}</h3>
       <RenderValue value={data} />
     </div>
   );
@@ -39,43 +77,67 @@ export default function TextGeneration() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-800 via-teal-800 to-blue-800 text-white p-8 pt-24">
-      <div className="max-w-4xl mx-auto">
-        <h2 className="text-3xl font-bold mb-8 text-center">Text Generation</h2>
-        <form onSubmit={handleSubmit} className="mb-8 max-w-2xl mx-auto">
-          <div className="flex flex-col gap-4">
+    <div style={{ 
+      minHeight: '100vh', 
+      background: 'linear-gradient(to bottom right, #065F46, #0F766E, #1E40AF)',
+      color: 'white',
+      padding: '4rem 1rem'
+    }}>
+      <div style={{ maxWidth: '64rem', margin: '0 auto' }}>
+        <h2 style={{ fontSize: 'clamp(2rem, 5vw, 4rem)', fontWeight: '800', marginBottom: '2rem', textAlign: 'center' }}>Text Generation</h2>
+        <form onSubmit={handleSubmit} style={{ marginBottom: '2rem', maxWidth: '48rem', margin: '0 auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <textarea
               placeholder="Enter prompt"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               required
-              className="w-full h-32 bg-white bg-opacity-10 border border-white border-opacity-20 p-3 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm transition-all duration-300 ease-in-out text-white placeholder-gray-300"
+              style={{
+                width: '100%',
+                height: '8rem',
+                padding: '0.75rem',
+                fontSize: '1rem',
+                borderRadius: '0.375rem',
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                color: 'white',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+              }}
             />
-            <div className="flex gap-4">
-              <div className="flex-grow flex items-center bg-white bg-opacity-10 border border-white border-opacity-20 rounded-md p-2">
-                <Sliders className="text-gray-300 mr-2" size={20} />
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <div style={{ 
+                flex: 1, 
+                display: 'flex', 
+                alignItems: 'center', 
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '0.375rem',
+                padding: '0.5rem'
+              }}>
+                <Sliders style={{ color: '#D1D5DB', marginRight: '0.5rem' }} size={20} />
                 <input
                   type="number"
                   placeholder="Max Length"
                   value={maxLength}
                   onChange={(e) => setMaxLength(Number(e.target.value))}
                   required
-                  className="w-full bg-transparent p-1 focus:outline-none text-white placeholder-gray-300"
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    color: 'white',
+                    fontSize: '1rem',
+                  }}
                 />
               </div>
-              <button
-                type="submit"
-                className="bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 transition duration-300 ease-in-out flex items-center justify-center shadow-sm hover:shadow"
-                disabled={loading}
-              >
+              <button type="submit" style={buttonStyle} disabled={loading}>
                 {loading ? (
                   <>
-                    <Loader2 className="animate-spin mr-2" size={20} />
+                    <Loader2 style={{ marginRight: '0.5rem', animation: 'spin 1s linear infinite' }} size={20} />
                     Generating...
                   </>
                 ) : (
                   <>
-                    <Type className="mr-2" size={20} />
+                    <Type style={{ marginRight: '0.5rem' }} size={20} />
                     Generate Text
                   </>
                 )}
@@ -85,23 +147,21 @@ export default function TextGeneration() {
         </form>
         
         {error && (
-          <div className="bg-red-900 bg-opacity-50 border-l-4 border-red-500 text-white p-4 mb-6 rounded-md max-w-2xl mx-auto" role="alert">
-            <p className="font-bold">Error</p>
+          <div style={{ ...cardStyle, backgroundColor: 'rgba(220, 38, 38, 0.1)', color: '#FCA5A5', marginBottom: '2rem' }}>
+            <p style={{ fontWeight: '600', marginBottom: '0.5rem' }}>Error</p>
             <p>{error}</p>
           </div>
         )}
 
         {loading && (
-          <div className="flex justify-center items-center mb-8">
-            <div className="animate-pulse flex flex-col items-center">
-              <Loader2 className="animate-spin mb-2" size={40} />
-              <p className="text-gray-300">Generating text...</p>
-            </div>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', marginBottom: '2rem' }}>
+            <Loader2 style={{ animation: 'spin 1s linear infinite' }} size={40} />
+            <p style={{ marginTop: '1rem', color: '#D1D5DB' }}>Generating text...</p>
           </div>
         )}
 
         {generatedText && (
-          <div className="space-y-6">
+          <div>
             <Section title="Generated Text" data={generatedText} />
           </div>
         )}
