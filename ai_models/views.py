@@ -259,6 +259,12 @@ class EnvironmentalImpactView(AIEnhancedView):
         except Exception as e:
             logger.error(f"Error generating AI analysis: {str(e)}")
             return None
+from rest_framework.response import Response
+from rest_framework import status
+import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BusinessModelView(AIEnhancedView):
     def post(self, request):
@@ -270,20 +276,27 @@ class BusinessModelView(AIEnhancedView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        if 'custom_data' in request.data:
-            business_model = self._generate_custom_business_model(serializer.validated_data)
-        else:
-            company = serializer.validated_data['company']
-            year = serializer.validated_data['year']
-            generator = InnovativeBusinessModelGenerator(initialized_model)
-            business_model = generator.generate_business_model({'company': company, 'year': year})
-        
-        ai_enhancements = self._generate_ai_enhancements(business_model['company'], business_model['year'], business_model)
-        
-        return Response({
-            "business_model": business_model,
-            "ai_enhancements": ai_enhancements
-        })
+        try:
+            if 'custom_data' in request.data:
+                business_model = self._generate_custom_business_model(serializer.validated_data)
+            else:
+                company = serializer.validated_data['company']
+                year = serializer.validated_data['year']
+                generator = InnovativeBusinessModelGenerator(initialized_model)
+                business_model = generator.generate_business_model({'company': company, 'year': year})
+            
+            company = business_model.get('company', 'Unknown Company')
+            year = business_model.get('year', 'Unknown Year')
+            
+            ai_enhancements = self._generate_ai_enhancements(company, year, business_model)
+            
+            return Response({
+                "business_model": business_model,
+                "ai_enhancements": ai_enhancements
+            })
+        except Exception as e:
+            logger.error(f"Error in BusinessModelView: {str(e)}")
+            return Response({"error": "An unexpected error occurred"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def _generate_custom_business_model(self, data):
         business_model = {
@@ -341,6 +354,10 @@ class BusinessModelView(AIEnhancedView):
             logger.error(f"Error generating AI enhancements: {str(e)}")
             return None
 
+    def _serialize_json(self, obj):
+        """Custom JSON serializer for objects not serializable by default json code"""
+        return str(obj)
+    
 class PredictionView(AIEnhancedView):
     def post(self, request):
         serializer = PredictionDataSerializer(data=request.data)

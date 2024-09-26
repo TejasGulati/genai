@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
-import { Loader2, Type, Briefcase, TrendingUp, BarChart2, FileText } from 'lucide-react';
+import { Loader2, Type, Briefcase, TrendingUp, BarChart2, FileText, Plus, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const styles = {
@@ -205,11 +205,27 @@ const FeatureCard = ({ title, description, icon: Icon }) => {
 };
 export default function BusinessModel() {
   const [companyName, setCompanyName] = useState('');
-  const [year, setYear] = useState('');
+  const [year, setYear] = useState(new Date().getFullYear());
   const [generatedData, setGeneratedData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [scrollY, setScrollY] = useState(0);
+  const [isCustomInput, setIsCustomInput] = useState(false);
+  const [customData, setCustomData] = useState({
+    company_name: '',
+    industry: '',
+    year: new Date().getFullYear(),
+    ai_adoption_percentage: '',
+    primary_ai_application: '',
+    esg_score: '',
+    primary_esg_impact: '',
+    sustainable_growth_index: '',
+    innovation_index: '',
+    revenue_growth: '',
+    cost_reduction: '',
+    employee_satisfaction: '',
+    market_share_change: '',
+  });
 
   useEffect(() => {
     const handleScroll = () => setScrollY(window.scrollY);
@@ -232,26 +248,114 @@ export default function BusinessModel() {
     }
     return cleanedData;
   };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     setGeneratedData(null);
     try {
-      const response = await api.post('/api/business-model/', { company: companyName, year });
-      if (!response.data || !response.data.business_model || !response.data.ai_enhancements) {
+      let payload;
+      if (isCustomInput) {
+        payload = {
+          custom_data: {
+            company_name: customData.company_name,
+            industry: customData.industry,
+            year: parseInt(customData.year),
+            ai_adoption_percentage: parseFloat(customData.ai_adoption_percentage),
+            primary_ai_application: customData.primary_ai_application,
+            esg_score: parseFloat(customData.esg_score),
+            primary_esg_impact: customData.primary_esg_impact,
+            sustainable_growth_index: parseFloat(customData.sustainable_growth_index),
+            innovation_index: parseFloat(customData.innovation_index),
+            cost_reduction: parseFloat(customData.cost_reduction),
+            revenue_growth: parseFloat(customData.revenue_growth),
+            employee_satisfaction: parseFloat(customData.employee_satisfaction),
+            market_share_change: parseFloat(customData.market_share_change)
+          }
+        };
+      } else {
+        payload = { company: companyName, year: parseInt(year) };
+      }
+      
+      console.log('Sending payload:', JSON.stringify(payload, null, 2));
+      
+      const response = await api.post('/api/business-model/', payload);
+      
+      console.log('Received response:', response);
+  
+      if (!response.data) {
         throw new Error('Incomplete data received from the server');
       }
       const cleanedData = cleanData(response.data);
       setGeneratedData(cleanedData);
     } catch (error) {
       console.error('Error generating business model:', error);
-      setError('Failed to generate a complete business model. Please try again in a few seconds.');
+      if (error.response) {
+        console.error('Error response data:', error.response.data);
+        console.error('Error response status:', error.response.status);
+        console.error('Error response headers:', error.response.headers);
+        setError(`Server error: ${JSON.stringify(error.response.data)}`);
+      } else if (error.request) {
+        console.error('Error request:', error.request);
+        setError('No response received from server. Please try again.');
+      } else {
+        console.error('Error message:', error.message);
+        setError('An unexpected error occurred. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
+  const handleCustomDataChange = (e) => {
+    const { name, value } = e.target;
+    setCustomData(prevData => {
+      let newValue = value;
+      if (['year', 'ai_adoption_percentage', 'esg_score', 'innovation_index', 'sustainable_growth_index', 'revenue_growth', 'cost_reduction', 'employee_satisfaction', 'market_share_change'].includes(name)) {
+        newValue = value === '' ? '' : parseFloat(value);
+        
+        // Ensure percentage fields are between 0 and 100
+        if (['ai_adoption_percentage', 'esg_score', 'innovation_index', 'employee_satisfaction'].includes(name)) {
+          newValue = Math.max(0, Math.min(100, newValue));
+        }
+        
+        // Ensure index is between 0 and 1
+        if (name === 'sustainable_growth_index') {
+          newValue = Math.max(0, Math.min(1, newValue));
+        }
+        
+        // Ensure percentage fields are between -100 and 100
+        if (['revenue_growth', 'cost_reduction', 'market_share_change'].includes(name)) {
+          newValue = Math.max(-100, Math.min(100, newValue));
+        }
+      }
+      
+      // Ensure year is an integer
+      if (name === 'year') {
+        newValue = Math.round(newValue);
+      }
+      
+      return {
+        ...prevData,
+        [name]: newValue,
+      };
+    });
+  };
+
+  const toggleCustomInput = () => {
+    setIsCustomInput(!isCustomInput);
+  };
+
+  const ErrorDisplay = ({ message }) => (
+    <div style={{
+      backgroundColor: 'rgba(220, 38, 38, 0.1)',
+      color: '#FCA5A5',
+      padding: '1rem',
+      borderRadius: '0.375rem',
+      marginBottom: '2rem'
+    }}>
+      {message}
+    </div>
+  );
 
   const features = [
     {
@@ -310,22 +414,113 @@ export default function BusinessModel() {
           transition={{ duration: 0.8, delay: 0.4 }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <input
-              type="text"
-              placeholder="Enter Company Name"
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              required
-              style={styles.input}
-            />
-            <input
-              type="number"
-              placeholder="Enter Target Year"
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              required
-              style={styles.input}
-            />
+            <motion.button 
+              type="button" 
+              onClick={toggleCustomInput}
+              style={{...styles.button, backgroundColor: isCustomInput ? '#3730A3' : '#10B981'}}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              {isCustomInput ? (
+                <>
+                  <Minus style={{ marginRight: '0.75rem' }} size={24} />
+                  Switch to Simple Input
+                </>
+              ) : (
+                <>
+                  <Plus style={{ marginRight: '0.75rem' }} size={24} />
+                  Switch to Custom Input
+                </>
+              )}
+            </motion.button>
+
+            {isCustomInput ? (
+              <AnimatePresence>
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
+                >
+                  {Object.entries(customData).map(([key, value]) => {
+                    let type = 'text';
+                    let min, max, step;
+
+                    if (['ai_adoption_percentage', 'esg_score', 'innovation_index', 'employee_satisfaction'].includes(key)) {
+                      type = 'number';
+                      min = 0;
+                      max = 100;
+                      step = 0.1;
+                    } else if (key === 'sustainable_growth_index') {
+                      type = 'number';
+                      min = 0;
+                      max = 1;
+                      step = 0.01;
+                    } else if (['revenue_growth', 'cost_reduction', 'market_share_change'].includes(key)) {
+                      type = 'number';
+                      min = -100;
+                      max = 100;
+                      step = 0.1;
+                    } else if (key === 'year') {
+                      type = 'number';
+                      min = 1900;
+                      max = new Date().getFullYear() + 10;
+                      step = 1;
+                    }
+
+                    return (
+                      <div key={key} style={{ marginBottom: '1rem' }}>
+                        <label htmlFor={key} style={styles.label}>
+                          {formatKey(key)}
+                          {type === 'number' && (
+                            key === 'sustainable_growth_index' 
+                              ? ` (0 to 1)` 
+                              : key === 'year' 
+                                ? ` (${min}+)` 
+                                : ` (${min} to ${max})`
+                          )}
+                        </label>
+                        <input
+                          id={key}
+                          type={type}
+                          name={key}
+                          value={value}
+                          onChange={handleCustomDataChange}
+                          style={styles.input}
+                          required
+                          min={min}
+                          max={max}
+                          step={step}
+                        />
+                      </div>
+                    );
+                  })}
+                </motion.div>
+              </AnimatePresence>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  placeholder="Enter Company Name"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  required
+                  style={styles.input}
+                />
+                <input
+                  type="number"
+                  placeholder="Enter Target Year"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  required
+                  style={styles.input}
+                  min={1900}
+                  max={new Date().getFullYear() + 10}
+                />
+              </>
+            )}
+
             <motion.button 
               type="submit" 
               style={styles.button} 
@@ -351,14 +546,12 @@ export default function BusinessModel() {
         <AnimatePresence>
           {error && (
             <motion.div 
-              style={{ ...styles.card, ...styles.error, marginBottom: '2rem' }}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.5 }}
             >
-              <p style={{ fontWeight: '600', marginBottom: '0.75rem' }}>Error</p>
-              <p>{error}</p>
+              <ErrorDisplay message={error} />
             </motion.div>
           )}
 
