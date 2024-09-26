@@ -1,9 +1,8 @@
-import jwt
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework import status
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from django.conf import settings
 from django.shortcuts import get_object_or_404
 from users.serializers import UserSerializer
@@ -11,23 +10,12 @@ from users.models import User, BlacklistedToken
 from rest_framework_simplejwt.exceptions import TokenError
 import logging
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from users.serializers import UserSerializer
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+import jwt
+
 # Set up logger
 logger = logging.getLogger(__name__)
-
-from django.core.exceptions import ValidationError
-from django.contrib.auth.password_validation import validate_password
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from users.serializers import UserSerializer
-from users.models import User
-from rest_framework.permissions import AllowAny
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
@@ -48,7 +36,7 @@ class RegisterView(APIView):
             except ValidationError as e:
                 return Response({'password': e.messages}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -79,7 +67,7 @@ class LoginView(APIView):
         })
         response.set_cookie(key='jwt', value=refresh_token, httponly=True, secure=True)
         return response
-    
+
 class RefreshTokenView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -91,6 +79,11 @@ class RefreshTokenView(APIView):
 
         try:
             token = RefreshToken(refresh_token)
+            
+            # Check if the refresh token is blacklisted
+            if BlacklistedToken.objects.filter(token=refresh_token).exists():
+                raise AuthenticationFailed("Refresh token is blacklisted!")
+
             access_token = str(token.access_token)
         except TokenError:
             raise AuthenticationFailed("Invalid refresh token!")
@@ -130,5 +123,28 @@ class UserView(APIView):
 
         serializer = UserSerializer(user)
         return Response(serializer.data)
-    
-    
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            refresh_token = request.COOKIES.get('jwt')
+            access_token = request.auth.token if hasattr(request, 'auth') and hasattr(request.auth, 'token') else None
+
+            if refresh_token:
+                try:
+                    token = RefreshToken(refresh_token)
+                    BlacklistedToken.objects.create(token=str(token), user=request.user)
+                except TokenError:
+                    pass  # Token was invalid, continue with the logout process
+
+            if access_token:
+                BlacklistedToken.objects.create(token=str(access_token), user=request.user)
+
+            response = Response({"detail": "Successfully logged out."}, status=status.HTTP_200_OK)
+            response.delete_cookie('jwt')
+            return response
+
+        except Exception as e:
+            logger.error(f"Error during logout: {str(e)}")
+            return Response({"error": "An error occurred during logout"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

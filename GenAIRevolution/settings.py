@@ -1,9 +1,14 @@
 from pathlib import Path
 import os
 from datetime import timedelta
+import os
+from pathlib import Path
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# Update the MEDIA_ROOT and MEDIA_URL settings
 BASE_DIR = Path(__file__).resolve().parent.parent
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = '/media/'
+
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-9=ij_5*8nzv%h0l#v*$e6n%@3v2e@cvagye3(+3m1gp0jy8@#6'
@@ -97,8 +102,7 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# Static files (CSS, JavaScript, Images)
-STATIC_URL = 'static/'
+
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -126,14 +130,24 @@ SIMPLE_JWT = {
     'TOKEN_TYPE_CLAIM': 'token_type',
 }
 
-# CORS settings
-CORS_ALLOW_ALL_ORIGINS = True  # For development, you might want to set specific origins in production
+
 CORS_ALLOW_CREDENTIALS = True
 
 # Custom user model
 AUTH_USER_MODEL = 'users.User'
 
-# Logging configuration (optional, but recommended)
+
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',  # or your React app's domain or port
+]
+CORS_ALLOW_CREDENTIALS = True
+
+STATIC_URL = '/static/'
+
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -142,8 +156,10 @@ LOGGING = {
             'class': 'logging.StreamHandler',
         },
     },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
+    'loggers': {
+        'react_app': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
     },
 }

@@ -1,6 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from .ml_model import initialized_model, TextGenerator, PredictiveAnalytics, EnvironmentalImpactAnalyzer, InnovativeBusinessModelGenerator, GenerativeImageCreator
 from .serializers import CompanyNameSerializer, CompanyYearSerializer, PredictionDataSerializer, TextPromptSerializer, ImagePromptSerializer
 import pandas as pd
@@ -17,6 +18,8 @@ genai.configure(api_key=os.getenv("GOOGLE_AI_API_KEY"))
 ai_model = genai.GenerativeModel('gemini-pro')
 
 class AIEnhancedView(APIView):
+    permission_classes = [IsAuthenticated]
+    
     def _generate_ai_content(self, prompt, max_attempts=3):
         for attempt in range(max_attempts):
             try:
@@ -302,31 +305,106 @@ class TextGenerationView(AIEnhancedView):
         except Exception as e:
             logger.error(f"Error generating enhanced text: {str(e)}")
             return None
+        
+import os
+import base64
+import shutil
+from django.conf import settings
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.response import Response
+import logging
+from urllib.parse import urljoin, urlparse
+import requests
+
+logger = logging.getLogger(__name__)
 
 class ImageGenerationView(AIEnhancedView):
     def post(self, request):
-        serializer = ImagePromptSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            serializer = ImagePromptSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            prompt = serializer.validated_data['prompt']
+            creator = GenerativeImageCreator()
+            image_data = creator.create_image(prompt)
+            
+            logger.info(f"Received image_data: {type(image_data)}")
+            if isinstance(image_data, str):
+                logger.info(f"Image data content: {image_data[:100]}...")  # Log first 100 chars
+            
+            image_path = self._save_image(image_data)
+            logger.info(f"Image saved successfully at {image_path}")
+            
+            # Generate full URL for the image
+            full_image_url = self._get_full_url(request, image_path)
+            
+            ai_description = self._generate_ai_description(prompt, full_image_url)
+            
+            return Response({
+                "image_url": full_image_url,
+                "ai_description": ai_description
+            })
         
-        prompt = serializer.validated_data['prompt']
-        creator = GenerativeImageCreator()
-        image_data = creator.create_image(prompt)
-        
-        ai_description = self._generate_ai_description(prompt, image_data)
-        
-        return Response({
-            "image_data": image_data,
-            "ai_description": ai_description
-        })
+        except Exception as e:
+            logger.exception(f"Error in image generation: {str(e)}")
+            return Response({"error": "An unexpected error occurred"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def _generate_ai_description(self, prompt, image_data):
+    def _save_image(self, image_data):
+        try:
+            filename = f"image_{timezone.now().strftime('%Y%m%d%H%M%S')}.png"
+            relative_path = os.path.join('generated_images', filename)
+            full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+            
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            
+            if isinstance(image_data, str):
+                if image_data.startswith('http'):
+                    # It's a URL, download the image
+                    response = requests.get(image_data)
+                    response.raise_for_status()
+                    image_data = response.content
+                elif image_data.startswith('data:image'):
+                    # It's a base64 encoded image
+                    image_data = base64.b64decode(image_data.split(',')[1])
+                elif image_data.startswith('Image saved at '):
+                    # It's a file path returned by the AI, but the file doesn't exist yet
+                    # We'll assume the AI has created the file and we just need to move it
+                    ai_generated_path = image_data.replace('Image saved at ', '').strip()
+                    if os.path.exists(ai_generated_path):
+                        shutil.move(ai_generated_path, full_path)
+                        return os.path.join(settings.MEDIA_URL, relative_path)
+                    else:
+                        raise FileNotFoundError(f"AI reported saving image at {ai_generated_path}, but file not found")
+                else:
+                    # Assume it's a file path
+                    with open(image_data, 'rb') as f:
+                        image_data = f.read()
+            
+            if not isinstance(image_data, bytes):
+                raise ValueError(f"Unexpected image_data type: {type(image_data)}")
+            
+            with open(full_path, 'wb') as f:
+                f.write(image_data)
+            
+            logger.info(f"Image saved at {full_path}")
+            return os.path.join(settings.MEDIA_URL, relative_path)
+        
+        except Exception as e:
+            logger.exception(f"Error saving image: {str(e)}")
+            raise
+
+    def _get_full_url(self, request, path):
+        return request.build_absolute_uri(path)
+
+    def _generate_ai_description(self, prompt, image_url):
         try:
             ai_prompt = f"""
             Describe and analyze the following generated image:
 
             Image Generation Prompt: {prompt}
-            Image Data: {image_data}
+            Image URL: {image_url}
 
             Please provide:
             1. A detailed description of the generated image.
