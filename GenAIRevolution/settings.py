@@ -65,20 +65,17 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'GenAIRevolution.wsgi.application'
 
-# Database
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'genaii',
-        'USER': 'root',
-        'PASSWORD': 'iamnoobokay',
-        'HOST': 'localhost',  
-        'PORT': '3306',
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-        },
-    }
-}
+       'default': {
+           'ENGINE': 'django.db.backends.postgresql',
+           'NAME': 'genaii',  # Your database name
+           'USER': 'tejas',
+           'PASSWORD': 'iamnoobokay',
+           'HOST': 'localhost',  # Set to your PostgreSQL host if different
+           'PORT': '5432',  # Default PostgreSQL port
+       }
+   }
+   
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

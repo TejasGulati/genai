@@ -88,6 +88,60 @@ const styles = {
   },
 };
 
+const datasets = [
+  { key: 'ai_esg_alignment', label: 'AI ESG Alignment' },
+  { key: 'ai_impact', label: 'AI Impact on Traditional Industries' },
+  { key: 'gen_ai_business', label: 'Generative AI Business Models' },
+];
+
+const datasetFields = {
+  ai_esg_alignment: [
+    { name: 'company', label: 'Company Name', type: 'text' },
+    { name: 'industry', label: 'Industry', type: 'text' },
+    { name: 'year', label: 'Year', type: 'number' },
+    { name: 'ai_esg_investment_percentage', label: 'AI ESG Investment Percentage', type: 'number', step: '0.01' },
+    { name: 'primary_esg_initiative', label: 'Primary ESG Initiative', type: 'text' },
+    { name: 'ai_contribution', label: 'AI Contribution', type: 'text' },
+    { name: 'esg_performance_score', label: 'ESG Performance Score', type: 'number', step: '0.01', min: '0', max: '100' },
+    { name: 'carbon_footprint_reduction', label: 'Carbon Footprint Reduction', type: 'number', step: '0.01' },
+    { name: 'resource_efficiency_improvement', label: 'Resource Efficiency Improvement', type: 'number', step: '0.01' },
+    { name: 'stakeholder_trust_index', label: 'Stakeholder Trust Index', type: 'number', step: '0.01', min: '0', max: '100' },
+    { name: 'regulatory_compliance_score', label: 'Regulatory Compliance Score', type: 'number', step: '0.01', min: '0', max: '100' },
+    { name: 'social_impact_score', label: 'Social Impact Score', type: 'number', step: '0.01', min: '0', max: '100' },
+  ],
+  ai_impact: [
+    { name: 'company', label: 'Company Name', type: 'text' },
+    { name: 'industry', label: 'Industry', type: 'text' },
+    { name: 'year', label: 'Year', type: 'number' },
+    { name: 'ai_investment_percentage', label: 'AI Investment Percentage', type: 'number', step: '0.01' },
+    { name: 'traditional_process_impacted', label: 'Traditional Process Impacted', type: 'text' },
+    { name: 'ai_technology_used', label: 'AI Technology Used', type: 'text' },
+    { name: 'process_efficiency_improvement', label: 'Process Efficiency Improvement', type: 'number', step: '0.01' },
+    { name: 'cost_savings', label: 'Cost Savings', type: 'number', step: '0.01' },
+    { name: 'jobs_automated', label: 'Jobs Automated', type: 'number', step: '0.01' },
+    { name: 'new_jobs_created', label: 'New Jobs Created', type: 'number', step: '0.01' },
+    { name: 'product_quality_improvement', label: 'Product Quality Improvement', type: 'number', step: '0.01' },
+    { name: 'time_to_market_reduction', label: 'Time to Market Reduction', type: 'number', step: '0.01' },
+  ],
+  gen_ai_business: [
+    { name: 'company', label: 'Company Name', type: 'text' },
+    { name: 'country', label: 'Country', type: 'text' },
+    { name: 'industry', label: 'Industry', type: 'text' },
+    { name: 'year', label: 'Year', type: 'number' },
+    { name: 'ai_adoption_percentage', label: 'AI Adoption Percentage', type: 'number', step: '0.01' },
+    { name: 'primary_ai_application', label: 'Primary AI Application', type: 'text' },
+    { name: 'disruption_level', label: 'Disruption Level', type: 'text' },
+    { name: 'revenue_growth', label: 'Revenue Growth', type: 'number', step: '0.01' },
+    { name: 'cost_reduction', label: 'Cost Reduction', type: 'number', step: '0.01' },
+    { name: 'esg_score', label: 'ESG Score', type: 'number', step: '0.01', min: '0', max: '100' },
+    { name: 'primary_esg_impact', label: 'Primary ESG Impact', type: 'text' },
+    { name: 'sustainable_growth_index', label: 'Sustainable Growth Index', type: 'number', step: '0.01', min: '0', max: '1' },
+    { name: 'innovation_index', label: 'Innovation Index', type: 'number', step: '0.01', min: '0', max: '100' },
+    { name: 'employee_satisfaction', label: 'Employee Satisfaction', type: 'number', step: '0.01', min: '0', max: '100' },
+    { name: 'market_share_change', label: 'Market Share Change', type: 'number', step: '0.01' },
+  ],
+};
+
 const formatKey = (key) => {
   return key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
@@ -96,7 +150,6 @@ const cleanText = (text) => {
   if (typeof text !== 'string') return text;
   return text.replace(/\*\*/g, '').replace(/\\n/g, '\n').trim();
 };
-
 const RenderValue = ({ value }) => {
   if (value === null || value === undefined) {
     return <span style={{ color: '#D1D5DB' }}>N/A</span>;
@@ -203,12 +256,10 @@ const FeatureCard = ({ title, description, icon: Icon }) => {
     </motion.div>
   );
 };
-
 export default function Prediction() {
-  const [data, setData] = useState('');
+  const [formData, setFormData] = useState({});
   const [datasetKey, setDatasetKey] = useState('');
-  const [predictions, setPredictions] = useState(null);
-  const [aiInsights, setAiInsights] = useState(null);
+  const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [scrollY, setScrollY] = useState(0);
@@ -219,36 +270,32 @@ export default function Prediction() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const cleanData = (data) => {
-    if (typeof data !== 'object' || data === null) return data;
-    
-    const cleanedData = Array.isArray(data) ? [] : {};
-    for (const [key, value] of Object.entries(data)) {
-      if (typeof value === 'object' && value !== null) {
-        cleanedData[key] = cleanData(value);
-      } else if (typeof value === 'string') {
-        cleanedData[key] = cleanText(value);
-      } else {
-        cleanedData[key] = value;
-      }
-    }
-    return cleanedData;
+  const handleInputChange = (e) => {
+    const { name, value, type } = e.target;
+    setFormData(prevData => ({
+      ...prevData,
+      [name]: type === 'number' ? parseFloat(value) : value
+    }));
+  };
+
+  const handleDatasetChange = (e) => {
+    const newDatasetKey = e.target.value;
+    setDatasetKey(newDatasetKey);
+    setFormData({}); // Reset form data when changing datasets
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    setPredictions(null);
-    setAiInsights(null);
+    setResult(null);
     try {
-      const response = await api.post('/api/predict/', { data: JSON.parse(data), dataset_key: datasetKey });
-      if (!response.data || !response.data.predictions || !response.data.ai_insights) {
-        throw new Error('Incomplete data received from the server');
+      const dataForApi = { data: [formData], dataset_key: datasetKey };
+      const response = await api.post('/api/predict/', dataForApi);
+      if (!response.data) {
+        throw new Error('No data received from the server');
       }
-      const cleanedData = cleanData(response.data);
-      setPredictions(cleanedData.predictions);
-      setAiInsights(cleanedData.ai_insights);
+      setResult(response.data);
     } catch (error) {
       console.error('Error making predictions:', error);
       setError('Failed to make predictions. Please check your input and try again.');
@@ -314,21 +361,41 @@ export default function Prediction() {
           transition={{ duration: 0.8, delay: 0.4 }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <textarea
-              placeholder="Enter JSON data"
-              value={data}
-              onChange={(e) => setData(e.target.value)}
-              required
-              style={{...styles.input, minHeight: '150px'}}
-            />
-            <input
-              type="text"
-              placeholder="Enter Dataset Key"
-              value={datasetKey}
-              onChange={(e) => setDatasetKey(e.target.value)}
-              required
-              style={styles.input}
-            />
+            <div>
+              <label htmlFor="dataset" style={styles.label}>Select Dataset</label>
+              <select
+                id="dataset"
+                value={datasetKey}
+                onChange={handleDatasetChange}
+                required
+                style={styles.input}
+              >
+                <option value="">Select Dataset</option>
+                {datasets.map(dataset => (
+                  <option key={dataset.key} value={dataset.key}>{dataset.label}</option>
+                ))}
+              </select>
+            </div>
+            {datasetKey && datasetFields[datasetKey].map(field => (
+              <div key={field.name}>
+                <label htmlFor={field.name} style={styles.label}>
+                  {field.label}
+                  {field.type === 'number' && field.max && ` (${field.min} to ${field.max})`}
+                </label>
+                <input
+                  id={field.name}
+                  type={field.type}
+                  name={field.name}
+                  value={formData[field.name] || ''}
+                  onChange={handleInputChange}
+                  required
+                  style={styles.input}
+                  min={field.min}
+                  max={field.max}
+                  step={field.step}
+                />
+              </div>
+            ))}
             <motion.button 
               type="submit" 
               style={styles.button} 
@@ -377,7 +444,7 @@ export default function Prediction() {
             </motion.div>
           )}
 
-          {predictions && aiInsights && (
+          {result && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -385,8 +452,9 @@ export default function Prediction() {
               transition={{ duration: 0.5 }}
               style={{marginTop: '3rem'}}
             >
-              <Section title="Predictions" data={predictions} />
-              <Section title="AI Insights" data={aiInsights} />
+              <Section title="Predictions" data={result.predictions} />
+              <Section title="Feature Importance" data={result.predictions.feature_importance} />
+              <Section title="AI Insights" data={result.ai_insights} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -396,7 +464,7 @@ export default function Prediction() {
         style={{
           position: 'fixed',
           inset: 0,
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath opacity='.5' d='M96 95h4v1h-4v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9zm-1 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9h9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9z'/%3E%3Cpath d='M6 5V0H5v5H0v1h5v94h1V6h94V5H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath opacity='.5' d='M96 95h4v1h-4v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9zm-1 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9h9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9z'/%3E%3Cpath d='M6 5V0H5v5H0v1h5v94h1V6h94V5H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
           transform: `translateY(${scrollY * 0.5}px)`,
           pointerEvents: 'none',
         }}
