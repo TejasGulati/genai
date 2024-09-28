@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, ChevronDown } from 'lucide-react';
+import { Menu, X, ChevronDown, User, LogOut } from 'lucide-react';
 
 function Navbar() {
   const { isAuthenticated, logout } = useAuth();
@@ -11,6 +11,7 @@ function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const mobileMenuRef = useRef(null);
 
   const handleLogout = () => {
     logout();
@@ -26,14 +27,27 @@ function Navbar() {
       setScrolled(window.scrollY > 20);
     };
 
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setIsMenuOpen(false);
+      }
+    };
+
     window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleResize);
+    };
   }, []);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setDropdownOpen(false);
+      }
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target) && !event.target.closest('button')) {
+        setIsMenuOpen(false);
       }
     };
 
@@ -43,21 +57,9 @@ function Navbar() {
     };
   }, []);
 
-  useEffect(() => {
-    const handleOpenToolsDropdown = () => {
-      setDropdownOpen(true);
-    };
-
-    window.addEventListener('openToolsDropdown', handleOpenToolsDropdown);
-
-    return () => {
-      window.removeEventListener('openToolsDropdown', handleOpenToolsDropdown);
-    };
-  }, []);
-
   return (
     <nav className={`fixed w-full z-50 transition-all duration-300 ${
-      scrolled ? 'bg-green-700 bg-opacity-90 backdrop-filter backdrop-blur-lg shadow-lg' : 'bg-transparent'
+      scrolled || isMenuOpen ? 'bg-green-800 shadow-lg' : 'bg-transparent'
     }`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
@@ -74,12 +76,14 @@ function Navbar() {
               {isAuthenticated ? (
                 <>
                   <div className="relative" ref={dropdownRef}>
-                    <button
+                    <motion.button
                       onClick={() => setDropdownOpen(!dropdownOpen)}
-                      className="text-gray-300 hover:bg-green-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors duration-300 flex items-center"
+                      className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors duration-300 flex items-center"
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
                     >
                       Tools <ChevronDown className="ml-1 h-4 w-4" />
-                    </button>
+                    </motion.button>
                     <AnimatePresence>
                       {dropdownOpen && (
                         <motion.div
@@ -101,14 +105,14 @@ function Navbar() {
                       )}
                     </AnimatePresence>
                   </div>
-                  <NavLink to="/profile" label="Profile" />
+                  <NavLink to="/profile" icon={<User className="w-4 h-4 mr-1" />} label="Profile" />
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={handleLogout}
-                    className="text-gray-300 hover:bg-green-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors duration-300"
+                    className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors duration-300 flex items-center"
                   >
-                    Logout
+                    <LogOut className="w-4 h-4 mr-1" /> Logout
                   </motion.button>
                 </>
               ) : (
@@ -125,7 +129,7 @@ function Navbar() {
               whileTap={{ scale: 0.95 }}
               onClick={toggleMenu}
               type="button"
-              className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
+              className="inline-flex items-center justify-center p-2 rounded-md text-white hover:text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
               aria-controls="mobile-menu"
               aria-expanded={isMenuOpen}
             >
@@ -139,37 +143,41 @@ function Navbar() {
       <AnimatePresence>
         {isMenuOpen && (
           <motion.div
+            ref={mobileMenuRef}
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3 }}
-            className="md:hidden"
+            className="md:hidden bg-green-800 shadow-lg overflow-hidden"
             id="mobile-menu"
           >
-            <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-              <MobileNavLink to="/" label="Home" />
+            <div className="px-4 pt-2 pb-3 space-y-1 sm:px-3">
+              <MobileNavLink to="/" label="Home" onClick={() => setIsMenuOpen(false)} />
               {isAuthenticated ? (
                 <>
-                  <MobileNavLink to="/profile" label="Profile" />
-                  <MobileNavLink to="/sustainability-report" label="Sustainability Report" />
-                  <MobileNavLink to="/environmental-impact" label="Environmental Impact" />
-                  <MobileNavLink to="/business-model" label="Business Model" />
-                  <MobileNavLink to="/predict" label="Prediction" />
-                  <MobileNavLink to="/generate-text" label="Generate Text" />
-                  <MobileNavLink to="/generate-image" label="Generate Image" />
+                  <MobileNavLink to="/profile" label="Profile" icon={<User className="w-4 h-4 mr-2" />} onClick={() => setIsMenuOpen(false)} />
+                  <MobileNavLink to="/sustainability-report" label="Sustainability Report" onClick={() => setIsMenuOpen(false)} />
+                  <MobileNavLink to="/environmental-impact" label="Environmental Impact" onClick={() => setIsMenuOpen(false)} />
+                  <MobileNavLink to="/business-model" label="Business Model" onClick={() => setIsMenuOpen(false)} />
+                  <MobileNavLink to="/predict" label="Prediction" onClick={() => setIsMenuOpen(false)} />
+                  <MobileNavLink to="/generate-text" label="Generate Text" onClick={() => setIsMenuOpen(false)} />
+                  <MobileNavLink to="/generate-image" label="Generate Image" onClick={() => setIsMenuOpen(false)} />
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={handleLogout}
-                    className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-green-700 transition-colors duration-300"
+                    onClick={() => {
+                      handleLogout();
+                      setIsMenuOpen(false);
+                    }}
+                    className="flex items-center w-full text-left px-3 py-2 rounded-md text-base font-medium text-white hover:bg-green-700 transition-colors duration-300"
                   >
-                    Logout
+                    <LogOut className="w-4 h-4 mr-2" /> Logout
                   </motion.button>
                 </>
               ) : (
                 <>
-                  <MobileNavLink to="/register" label="Register" />
-                  <MobileNavLink to="/login" label="Login" />
+                  <MobileNavLink to="/register" label="Register" onClick={() => setIsMenuOpen(false)} />
+                  <MobileNavLink to="/login" label="Login" onClick={() => setIsMenuOpen(false)} />
                 </>
               )}
             </div>
@@ -180,7 +188,7 @@ function Navbar() {
   );
 }
 
-function NavLink({ to, label }) {
+function NavLink({ to, label, icon }) {
   const location = useLocation();
   const isActive = location.pathname === to;
 
@@ -188,17 +196,18 @@ function NavLink({ to, label }) {
     <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
       <Link
         to={to}
-        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-300 ${
-          isActive ? 'bg-green-700 text-white' : 'text-gray-300 hover:bg-green-600 hover:text-white'
+        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-300 flex items-center ${
+          isActive ? 'bg-green-700 text-white' : 'text-gray-300 hover:text-white hover:bg-green-700'
         }`}
       >
+        {icon && <span className="mr-1">{icon}</span>}
         {label}
       </Link>
     </motion.div>
   );
 }
 
-function MobileNavLink({ to, label }) {
+function MobileNavLink({ to, label, icon, onClick }) {
   const location = useLocation();
   const isActive = location.pathname === to;
 
@@ -206,10 +215,12 @@ function MobileNavLink({ to, label }) {
     <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
       <Link
         to={to}
-        className={`block px-3 py-2 rounded-md text-base font-medium transition-colors duration-300 ${
-          isActive ? 'bg-green-700 text-white' : 'text-gray-300 hover:bg-green-600 hover:text-white'
+        onClick={onClick}
+        className={`flex items-center px-3 py-2 rounded-md text-base font-medium transition-colors duration-300 ${
+          isActive ? 'bg-green-700 text-white' : 'text-white hover:bg-green-700'
         }`}
       >
+        {icon && <span className="mr-2">{icon}</span>}
         {label}
       </Link>
     </motion.div>
@@ -220,7 +231,7 @@ function DropdownLink({ to, label }) {
   return (
     <Link
       to={to}
-      className="block px-4 py-2 text-sm text-gray-800 hover:bg-gray-100 hover:text-gray-900"
+      className="block px-4 py-2 text-sm text-gray-800 hover:bg-gray-100 hover:text-gray-900 transition-colors duration-300"
       role="menuitem"
     >
       {label}
